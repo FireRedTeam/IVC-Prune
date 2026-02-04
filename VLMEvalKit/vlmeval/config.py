@@ -1085,7 +1085,9 @@ qwen2vl_series = {
 
     "Qwen2.5-VL-7B-Instruct_Grounding_IVCP": partial(
         Qwen2VLChatIVCP,
-        model_path="Qwen/Qwen2.5-VL-7B-Instruct",
+        # model_path="Qwen/Qwen2.5-VL-7B-Instruct",
+        # model_path="/mnt/public/usr/sunzhichao/hf_hub/models--Qwen--Qwen2.5-VL-7B-Instruct",
+        model_path="/mnt/public/usr/sunzhichao/hf_hub/Qwen2.5-VL-7B-Instruct",
         min_pixels=4 * 28 * 28,
         max_pixels=16384 * 28 * 28,
         use_custom_prompt=True,

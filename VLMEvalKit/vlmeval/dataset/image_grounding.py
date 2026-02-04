@@ -70,61 +70,17 @@ class Grounding_COCO(ImageBaseDataset):
     TYPE = 'VG'
 
     DATASET_URL = {
-        'RefCOCO_testA': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcoco_testA.tsv',
-        'RefCOCO_testB': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcoco_testB.tsv',
-        'RefCOCO_val': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcoco_val.tsv',
+        'RefCOCO_testA': '/PATH/refcoco_testA.tsv',
+        'RefCOCO_testB': '/PATH/refcoco_testB.tsv', 
+        'RefCOCO_val': '/PATH/refcoco_val.tsv', 
 
-        'RefCOCO+_testA': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcoco+_testA.tsv',
-        'RefCOCO+_testB': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcoco+_testB.tsv',
-        'RefCOCO+_val': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcoco+_val.tsv',
+        'RefCOCO+_testA': '/PATH/refcoco+_testA.tsv',
+        'RefCOCO+_testB': '/PATH/refcoco+_testB.tsv',
+        'RefCOCO+_val': '/PATH/refcoco+_val.tsv',
 
-        'RefCOCOg_test': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcocog_test.tsv',
-        'RefCOCOg_val': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcocog_val.tsv',
-        'debug': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcoco_testA_try100.tsv',
+        'RefCOCOg_test': '/PATH/refcocog_test.tsv',
+        'RefCOCOg_val': '/PATH/refcocog_val.tsv',
 
-
-        'RefCOCO_testA_org': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcoco_testA_local.tsv',
-        'RefCOCO_testB_org': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcoco_testB_local.tsv',
-        'RefCOCO_val_org': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcoco_val_local.tsv',
-
-        'RefCOCO+_testA_org': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcoco+_testA_local.tsv',
-        'RefCOCO+_testB_org': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcoco+_testB_local.tsv',
-        'RefCOCO+_val_org': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcoco+_val_local.tsv',
-
-        'RefCOCOg_test_org': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcocog_test_local.tsv',
-        'RefCOCOg_val_org': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcocog_val_local.tsv',
-
-        'debug_org': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcoco_testA_try100.tsv',
-
-        'RefCOCO_testA_foreground': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcoco_testA.tsv',
-        'RefCOCO_testB_foreground': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcoco_testB.tsv',
-        'RefCOCO_val_foreground': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcoco_val.tsv',
-
-        'RefCOCO+_testA_foreground': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcoco+_testA.tsv',
-        'RefCOCO+_testB_foreground': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcoco+_testB.tsv',
-        'RefCOCO+_val_foreground': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcoco+_val.tsv',
-
-        'RefCOCOg_test_foreground': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcocog_test.tsv',
-        'RefCOCOg_val_foreground': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcocog_val.tsv',
-        'debug_foreground': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcoco_testA_try100.tsv',
-
-        # 'RefCOCO_testA_foreground_deepseek': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcoco_testA_try100.tsv',
-        'RefCOCO_testA_foreground_deepseek': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcoco_testA_local.tsv',
-
-        'RefCOCO_testB_foreground_deepseek': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcoco_testB_local.tsv',
-        'RefCOCO_val_foreground_deepseek': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcoco_val_local.tsv',
-
-        'RefCOCO+_testA_foreground_deepseek': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcoco+_testA_local.tsv',
-        'RefCOCO+_testB_foreground_deepseek': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcoco+_testB_local.tsv',
-        'RefCOCO+_val_foreground_deepseek': '/mnt/public/usr/sunzhichao/benchmar/bp_refcoco/finetune_refcoco+_val_local.tsv',
-
-        'RefCOCOg_test_foreground_deepseek': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcocog_test_local.tsv',
-        'RefCOCOg_val_foreground_deepseek': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcocog_val_local.tsv',
-        # 'debug_foreground_deepseek': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcoco_testA_try100.tsv'
-        'debug_foreground_deepseek': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/refcoco_testA_local_sampled_100.tsv',
-        'refdrone_test': '/mnt/public/usr/sunzhichao/benchmark/refdrone_test.tsv',
-        'refdrone_test_sample': '/mnt/public/usr/sunzhichao/benchmark/refdrone_test_sample_100.tsv',
-        'debug_v2': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/refcoco_testA_local_sampled_100.tsv',
     }
 
 
@@ -135,7 +91,6 @@ class Grounding_COCO(ImageBaseDataset):
 
     @classmethod
     def evaluate(self, eval_file, **kwargs):
-        print("eval_file!!!!!", eval_file)
         data = load(eval_file)
         lt = len(data)
         lines = [data.iloc[i] for i in range(lt)]
@@ -187,8 +142,6 @@ class Grounding_COCO(ImageBaseDataset):
                 'number': num
             }, f)
 
-        # coco_caption_score_dict = scorer.compute_scores()
-        # dump(coco_caption_score_dict, score_pth)
         return {
                 'accuracy': accuracy,
                 'TP': TP,
