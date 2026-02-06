@@ -40,6 +40,23 @@ Key Innovation: Single-selection pruning strategy—tokens are selected once at 
 
 
 
+## 📝 TODO List: 
+
+Open Source Plan for Qwen, LLaVA, InternVL, DeepSeek Support
+
+**Supported LVLMs**
+
+  -  ✅ **Qwen-VL Support**  ([transformers code](transformers/src/transformers/models/qwen2_5_vl/modeling_qwen2_5_vl.py))
+      -  Qwen2.5-VL
+      -  Qwen2-VL
+
+  - [ ] **LLaVA Support**
+
+  - [ ] **InternVL Support**
+
+  - [ ] **DeepSeek-VL Support**
+
+
 
 
 ## Table of Contents
@@ -47,8 +64,6 @@ Key Innovation: Single-selection pruning strategy—tokens are selected once at 
 - [Installation](#installation)
 - [Dataset](#dataset)
 - [Usage](#usage)
-  - [Train](#train)
-  - [Inference](#inference) 
 - [Citation](#Citation)
 
 ## Installation
@@ -72,8 +87,8 @@ pip install flash-attn==2.5.8 --no-build-isolation -v
 
 ```
 
-
-We provide the grounding dataset on [Hugging Face](https://huggingface.co/datasets/sunzc-sunny/IVCP).
+## Dataset
+We provide the RefCOCO grounding dataset on [Hugging Face](https://huggingface.co/datasets/sunzc-sunny/IVCP).
 
 After downloading the dataset, please modify the `DATASET_URL` in `IVCP/VLMEvalKit/vlmeval/dataset/image_grounding.py`:
 
@@ -87,4 +102,41 @@ DATASET_URL = {
     'RefCOCOg_val': '/PATH/refcocog_val.tsv',
 }
 ```
+
+
+## Usage
+
+To evaluate the model on grounding tasks, run the following script:
+
+```bash
+cd IVCP/VLMEvalKit
+bash test_ivcp_qwen_grounding.sh
+```
+
+To evaluate general VQA tasks, run:
+
+```bash
+bash test_ivcp_qwen_generalvqa.sh
+```
+
+**Note:**  
+Before running the scripts, please make sure to **modify the dataset paths** in `test_ivcp_qwen_grounding.sh` (specifically lines 2-3) to point to your actual dataset location, e.g.:  `export LMUData="/your/dataset/path"`
+
+Some VQA Benchmark tests require the use of an API. Please configure your API according to the VLMEvalKit instructions. By default, we use GPT-4o.
+
+
+
+
+## Citation
+
+```bibtex
+@misc{sun2026ivcprunerevealingimplicitvisual,
+      title={IVC-Prune: Revealing the Implicit Visual Coordinates in LVLMs for Vision Token Pruning}, 
+      author={Zhichao Sun and Yidong Ma and Gang Liu and Yibo Chen and Xu Tang and Yao Hu and Yongchao Xu},
+      year={2026},
+      eprint={2602.03060},
+      archivePrefix={arXiv},
+}
+```
+
 

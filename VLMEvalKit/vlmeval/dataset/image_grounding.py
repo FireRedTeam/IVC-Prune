@@ -70,7 +70,7 @@ class Grounding_COCO(ImageBaseDataset):
     TYPE = 'VG'
 
     DATASET_URL = {
-        'RefCOCO_testA': '/PATH/refcoco_testA.tsv',
+        'RefCOCO_testA': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcoco_testA.tsv',
         'RefCOCO_testB': '/PATH/refcoco_testB.tsv', 
         'RefCOCO_val': '/PATH/refcoco_val.tsv', 
 

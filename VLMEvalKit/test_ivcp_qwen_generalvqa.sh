@@ -1,22 +1,21 @@
  #!/bin/bash
-export LMUData="/PATH/"
+export LMUData="/mnt/public/usr/sunzhichao/benchmark"
 
 
 MODELS=(
-    "Qwen2.5-VL-7B-Instruct_Grounding_IVCP"
+    "Qwen2.5-VL-7B-Instruct_IVCP"
+    "Qwen2.5-VL-3B-Instruct_IVCP"
 )
 
 
 datasets=(
+    "SEEDBench_IMG"
+    # "MMBench_DEV_EN_V11"
+    # "MMStar"
+    # "RealWorldQA"
+    # "MME"
+    # "POPE"
 
-    "RefCOCO_testA"
-    "RefCOCO_testB"
-    "RefCOCO_val"
-    "RefCOCO+_testA"
-    "RefCOCO+_testB"
-    "RefCOCO+_val"
-    "RefCOCOg_test"
-    "RefCOCOg_val"
 )
 
 # 为每个数据集运行评估
@@ -27,7 +26,7 @@ for MODEL in "${MODELS[@]}"; do
         echo "开始评估模型: $MODEL 数据集: $dataset"
         echo "====================================================="
         
-        python run.py --data "$dataset" --model "$MODEL" --verbose
+        torchrun --nproc-per-node=4 run.py --data "$dataset" --model "$MODEL" --verbose
         
         echo "评估完成: $MODEL - $dataset"
         echo "====================================================="

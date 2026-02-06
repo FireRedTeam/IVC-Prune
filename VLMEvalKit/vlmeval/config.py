@@ -1093,16 +1093,17 @@ qwen2vl_series = {
         use_custom_prompt=True,
         visual_grounding=True,
         ivcp_config={
-            "ivcp_k": 16,
+            "ivcp_k": 15,
             }
     ),
 
 
     "Qwen2.5-VL-7B-Instruct_IVCP": partial(
         Qwen2VLChatIVCP,
-        model_path="Qwen/Qwen2.5-VL-7B-Instruct",
+        # model_path="Qwen/Qwen2.5-VL-7B-Instruct",
+        model_path="/mnt/public/usr/sunzhichao/hf_hub/Qwen2.5-VL-7B-Instruct",
         min_pixels=4 * 28 * 28,
-        max_pixels=6000 * 28 * 28,
+        max_pixels=16384 * 28 * 28,
         use_custom_prompt=True,
         ivcp_config={
             "ivcp_k": 16,
