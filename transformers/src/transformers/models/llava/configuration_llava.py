@@ -75,13 +75,16 @@ class LlavaConfig(PretrainedConfig):
     ```"""
 
     model_type = "llava"
+    attribute_map = {
+        "image_token_id": "image_token_index",
+    }
     sub_configs = {"text_config": AutoConfig, "vision_config": AutoConfig}
-    is_composition = True
 
     def __init__(
         self,
         vision_config=None,
         text_config=None,
+        ivcp_config=None,
         image_token_index=32000,
         projector_hidden_act="gelu",
         vision_feature_select_strategy="default",
@@ -93,6 +96,7 @@ class LlavaConfig(PretrainedConfig):
         self.image_token_index = image_token_index
         self.projector_hidden_act = projector_hidden_act
         self.image_seq_length = image_seq_length
+        self.ivcp_config = ivcp_config
 
         if vision_feature_select_strategy not in ["default", "full"]:
             raise ValueError(

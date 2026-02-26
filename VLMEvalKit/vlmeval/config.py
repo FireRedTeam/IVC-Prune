@@ -505,7 +505,19 @@ xtuner_series = {
 
 llava_series = {
     "llava_v1.5_7b": partial(LLaVA, model_path="liuhaotian/llava-v1.5-7b"),
- 
+    
+    # To reproduce the results in FastV, we use the same version of llava-1.5-7b-hf-a272c74
+    # referring to https://github.com/pkunlp-icler/FastV/blob/d1659729b5bf1be225e99ee15783deeea80f63b1/demo-hf.py#L9
+    "llava_v1.5_7b_IVCP": partial(  
+            LLaVAIVCP, 
+            model_path="/mnt/public/usr/sunzhichao/hf_hub/llava-1.5-7b-hf-a272c74",
+            ivcp_config={
+                "ivcp_k": 16,
+                "image_token_start_index": 5, 
+                "image_token_length": 576,
+                }
+            ),
+
     "llava_v1.5_13b": partial(LLaVA, model_path="liuhaotian/llava-v1.5-13b"),
     "llava_v1_7b": partial(LLaVA, model_path=LLAVA_V1_7B_MODEL_PTH),
     "sharegpt4v_7b": partial(LLaVA, model_path="Lin-Chen/ShareGPT4V-7B"),
@@ -1272,6 +1284,7 @@ model_groups = [
     ungrouped,
     o1_apis,
     api_models,
+    llava_series,
     xtuner_series,
     qwen_series,
     internvl_series,

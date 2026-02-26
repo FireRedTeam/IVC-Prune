@@ -10,11 +10,11 @@ MODELS=(
 
 datasets=(
     "SEEDBench_IMG"
-    # "MMBench_DEV_EN_V11"
-    # "MMStar"
-    # "RealWorldQA"
-    # "MME"
-    # "POPE"
+    "MMBench_DEV_EN_V11"
+    "MMStar"
+    "RealWorldQA"
+    "MME"
+    "POPE"
 
 )
 

@@ -46,11 +46,11 @@ Open Source Plan for Qwen, LLaVA, InternVL, DeepSeek Support
 
 **Supported LVLMs**
 
-  -  ✅ **Qwen-VL Support**  ([transformers code](transformers/src/transformers/models/qwen2_5_vl/modeling_qwen2_5_vl.py))
+  - ✅ **Qwen-VL Support**  ([transformers code](transformers/src/transformers/models/qwen2_5_vl/modeling_qwen2_5_vl.py))
       -  Qwen2.5-VL
       -  Qwen2-VL
 
-  - [ ] **LLaVA Support**
+  - ✅ **LLaVA Support**
 
   - [ ] **InternVL Support**
 

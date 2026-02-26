@@ -37,7 +37,7 @@ def extract_bbox_coordinates(response_str):
         y2 = int(match.group(4))
         return [x1, y1, x2, y2]
     else:
-        print("未找到边界框坐标，返回[0, 0, 0, 0]")
+        print("None bbox coordinates, return [0, 0, 0, 0]")
         return [0, 0, 0, 0]
 
 
