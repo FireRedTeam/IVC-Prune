@@ -70,7 +70,19 @@ class Grounding_COCO(ImageBaseDataset):
     TYPE = 'VG'
 
     DATASET_URL = {
-        'RefCOCO_testA': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcoco_testA.tsv',
+        'RefCOCO_testA_for_qwen25vl': '/mnt/public/usr/sunzhichao/benchmark/finetune_refcoco_testA.tsv',
+        'RefCOCO_testB_for_qwen25vl': '/PATH/refcoco_testB.tsv', 
+        'RefCOCO_val_for_qwen25vl': '/PATH/refcoco_val.tsv', 
+
+        'RefCOCO+_testA_for_qwen25vl': '/PATH/refcoco+_testA.tsv',
+        'RefCOCO+_testB_for_qwen25vl': '/PATH/refcoco+_testB.tsv',
+        'RefCOCO+_val_for_qwen25vl': '/PATH/refcoco+_val.tsv',
+
+        'RefCOCOg_test_for_qwen25vl': '/PATH/refcocog_test.tsv',
+        'RefCOCOg_val_for_qwen25vl': '/PATH/refcocog_val.tsv',
+
+
+        'RefCOCO_testA': '/mnt/public/usr/sunzhichao/benchmark/bp_refcoco/finetune_refcoco_testA_local.tsv',
         'RefCOCO_testB': '/PATH/refcoco_testB.tsv', 
         'RefCOCO_val': '/PATH/refcoco_val.tsv', 
 
@@ -80,7 +92,6 @@ class Grounding_COCO(ImageBaseDataset):
 
         'RefCOCOg_test': '/PATH/refcocog_test.tsv',
         'RefCOCOg_val': '/PATH/refcocog_val.tsv',
-
     }
 
 

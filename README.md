@@ -50,11 +50,11 @@ Open Source Plan for Qwen, LLaVA, InternVL, DeepSeek Support
       -  Qwen2.5-VL
       -  Qwen2-VL
 
-  - ✅ **LLaVA Support**  ([transformers code](transformers/src/transformers/models/llama/modeling_llama.py))
+  - ✅ **LLaVA-v1.5 Support**  ([transformers code](transformers/src/transformers/models/llama/modeling_llama.py))
 
-  - [ ] **InternVL Support**
+  - ✅ **InternVL2.5 Support**  ([transformers code](transformers/src/transformers/models/internvl/modeling_internlm2.py))
 
-  - [ ] **DeepSeek-VL Support**
+  - [ ] **DeepSeek-VL2 Support**
 
 
 
@@ -87,21 +87,53 @@ pip install flash-attn==2.5.8 --no-build-isolation -v
 ```
 
 ## Dataset
-We provide the RefCOCO grounding dataset on [Hugging Face](https://huggingface.co/datasets/sunzc-sunny/IVCP).
+We provide MDETR format annotations for RefCOCO grounding dataset on [Hugging Face](https://huggingface.co/datasets/sunzc-sunny/IVCP).
 
-After downloading the dataset, please modify the `DATASET_URL` in `IVCP/VLMEvalKit/vlmeval/dataset/image_grounding.py`:
+### Setup Instructions
 
-```python
-DATASET_URL = {
-    'RefCOCO_testA': '/PATH/refcoco_testA.tsv',
-    'RefCOCO_testB': '/PATH/refcoco_testB.tsv', 
-    'RefCOCO_val': '/PATH/refcoco_val.tsv', 
-    .....
-    'RefCOCOg_test': '/PATH/refcocog_test.tsv',
-    'RefCOCOg_val': '/PATH/refcocog_val.tsv',
-}
+**Step 1: Download Required Files**
+- MDETR JSON annotations from [Hugging Face](https://huggingface.co/datasets/sunzc-sunny/IVCP)
+- COCO train2014 images from [COCO official site](https://cocodataset.org/#download)
+
+**Step 2: Generate TSV Files**
+
+Standard models:
+```bash
+python convert_to_tsv.py \\
+    --images_folder /path/to/train2014/ \\
+    --annotations_files /path/to/finetune_refcoco_val.json \\
+    --output_dir /path/to/output/
 ```
 
+Qwen2.5-VL (resized coordinates to multiples of 28):
+```bash
+python convert_to_tsv.py \\
+    --images_folder /path/to/train2014/ \\
+    --annotations_files /path/to/finetune_refcoco_val.json \\
+    --output_dir /path/to/output/ \\    
+    --qwen25
+```
+
+Batch processing all splits:
+```bash
+python convert_to_tsv.py \\    
+    --images_folder /path/to/train2014/ \\    
+    --annotations_files /path/to/finetune_refcoco_val.json \\
+    --output_dir /path/to/output/
+```
+
+**Step 3: Configure Paths**
+
+Modify `DATASET_URL` in `vlmeval/dataset/image_grounding.py`:
+```python
+DATASET_URL = {
+    'RefCOCO_testA': '/PATH/TO/refcoco_testA.tsv',
+    'RefCOCO_testB': '/PATH/TO/refcoco_testB.tsv',
+    'RefCOCO_val': '/PATH/TO/refcoco_val.tsv',   
+    # ... other splits
+    }
+```
+**Note:** Always use `--qwen25` flag when evaluating Qwen2.5-VL to ensure GT boxes match the model's patch size (28)."
 
 ## Usage
 

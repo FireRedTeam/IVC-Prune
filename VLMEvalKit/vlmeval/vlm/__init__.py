@@ -94,4 +94,4 @@ from .aki import AKI
 from .ristretto import Ristretto
 from .vlaa_thinker import VLAAThinkerChat
 
-from .ivcp import LLaVAIVCP, Qwen2VLChatIVCP, DeepSeekVL2IVCP
+from .ivcp import LLaVAIVCP, Qwen2VLChatIVCP, DeepSeekVL2IVCP, InternVLChatIVCP

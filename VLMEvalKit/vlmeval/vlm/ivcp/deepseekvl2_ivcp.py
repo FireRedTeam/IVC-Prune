@@ -229,7 +229,7 @@ class DeepSeekVL2IVCP(BaseModel):
                 'Please first install deepseek_vl2 from source codes in: https://github.com/deepseek-ai/DeepSeek-VL2')
             raise e
 
-    def __init__(self, model_path='deepseek-ai/deepseek-vl2-tiny',fastv_config=None ,**kwargs):
+    def __init__(self, model_path='deepseek-ai/deepseek-vl2-tiny',ivcp_config=None ,**kwargs):
         self.check_install()
         assert model_path is not None
         self.model_path = model_path
@@ -238,7 +238,7 @@ class DeepSeekVL2IVCP(BaseModel):
         self.vl_chat_processor = DeepseekVLV2Processor.from_pretrained(model_path)
         self.tokenizer = self.vl_chat_processor.tokenizer
         config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
-        config.fastv_config = fastv_config
+        config.ivcp_config = ivcp_config
 
 
         model: DeepseekVLV2ForCausalLM = AutoModelForCausalLM.from_pretrained(model_path,
@@ -410,9 +410,9 @@ class DeepSeekVL2IVCP(BaseModel):
         inputs_embeds, (image_start_indices, image_token_lengths, positions_info) = self.model.prepare_inputs_embeds(**prepare_inputs)
 
         past_key_values = None
-        if self.model.language.fastv_config != None:
-            self.model.language.fastv_config['image_start_indices'] = image_start_indices
-            self.model.language.fastv_config['image_token_lengths'] = image_token_lengths
+        if self.model.language.ivcp_config != None:
+            self.model.language.ivcp_config['image_start_indices'] = image_start_indices
+            self.model.language.ivcp_config['image_token_lengths'] = image_token_lengths
         # inputs_embeds, past_key_values = self.model.incremental_prefilling(
         #     input_ids=prepare_inputs.input_ids,
         #     images=prepare_inputs.images,
@@ -481,7 +481,7 @@ class DeepSeekVL2IVCP(BaseModel):
         else:
             msgs = [dict(type='image', value=tgt_path)]
 
-        if dataset in {"RefCOCO_testA_foreground_deepseek", "RefCOCO_val_foreground_deepseek" ,"RefCOCO_testB_foreground_deepseek", "RefCOCO+_testA_foreground_deepseek", "RefCOCO+_testB_foreground_deepseek", "RefCOCO+_val_foreground_deepseek", "RefCOCOg_test_foreground_deepseek", "RefCOCOg_val_foreground_deepseek", "debug_foreground_deepseek"}:
+        if dataset in {"RefCOCO_testA_foreground_deepseek", "RefCOCO_val_foregrou33nd_deepseek" ,"RefCOCO_testB_foreground_deepseek", "RefCOCO+_testA_foreground_deepseek", "RefCOCO+_testB_foreground_deepseek", "RefCOCO+_val_foreground_deepseek", "RefCOCOg_test_foreground_deepseek", "RefCOCOg_val_foreground_deepseek", "debug_foreground_deepseek"}:
             answer = line['answer']
             gt = np.array(answer.split(' '), dtype=float)
             msgs.append(dict(type='text', value=question+ '@#@' + answer))

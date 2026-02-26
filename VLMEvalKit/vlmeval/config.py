@@ -683,6 +683,12 @@ internvl_series = {
     "InternVL2_5-8B": partial(
         InternVLChat, model_path="OpenGVLab/InternVL2_5-8B", version="V2.0"
     ),
+    "InternVL2_5-8B_ivcp": partial(
+        InternVLChatIVCP, model_path="/mnt/public/usr/sunzhichao/hf_hub/models--OpenGVLab--InternVL2_5-8B", version="V2.0",
+        ivcp_config = {
+            "ivcp_k": 16
+            }
+    ),
 
     "InternVL2_5-26B": partial(
         InternVLChat, model_path="OpenGVLab/InternVL2_5-26B", version="V2.0"

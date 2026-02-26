@@ -9,14 +9,14 @@ MODELS=(
 
 datasets=(
 
-    "RefCOCO_testA"
-    "RefCOCO_testB"
-    "RefCOCO_val"
-    "RefCOCO+_testA"
-    "RefCOCO+_testB"
-    "RefCOCO+_val"
-    "RefCOCOg_test"
-    "RefCOCOg_val"
+    "RefCOCO_testA_for_qwen25vl"
+    "RefCOCO_testB_for_qwen25vl"
+    "RefCOCO_val_for_qwen25vl"
+    "RefCOCO+_testA_for_qwen25vl"
+    "RefCOCO+_testB_for_qwen25vl"
+    "RefCOCO+_val_for_qwen25vl"
+    "RefCOCOg_test_for_qwen25vl"
+    "RefCOCOg_val_for_qwen25vl"
 )
 
 # 为每个数据集运行评估

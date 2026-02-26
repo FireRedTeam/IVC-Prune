@@ -17,8 +17,11 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import ModelOutput, logging
 
-from .configuration_internvl_chat import InternVLChatConfig
+from .configuration_internvl import InternVLChatConfig
+
 from .conversation import get_conv_template
+
+
 from .modeling_intern_vit import InternVisionModel, has_flash_attn
 from .modeling_internlm2 import InternLM2ForCausalLM
 
@@ -253,7 +256,7 @@ class InternVLChatModel(PreTrainedModel):
 
     def chat(self, tokenizer, pixel_values, question, generation_config, history=None, return_history=False,
              num_patches_list=None, IMG_START_TOKEN='<img>', IMG_END_TOKEN='</img>', IMG_CONTEXT_TOKEN='<IMG_CONTEXT>',
-             verbose=False):
+             verbose=False, aspect_ratio=None):
 
         if history is None and pixel_values is not None and '<image>' not in question:
             question = '<image>\n' + question
@@ -293,6 +296,7 @@ class InternVLChatModel(PreTrainedModel):
             pixel_values=pixel_values,
             input_ids=input_ids,
             attention_mask=attention_mask,
+            aspect_ratio=aspect_ratio,
             **generation_config
         )
         response = tokenizer.batch_decode(generation_output, skip_special_tokens=True)[0]
@@ -316,6 +320,7 @@ class InternVLChatModel(PreTrainedModel):
             visual_features: Optional[torch.FloatTensor] = None,
             generation_config: Optional[GenerationConfig] = None,
             output_hidden_states: Optional[bool] = None,
+            aspect_ratio: Optional = None,
             **generate_kwargs,
     ) -> torch.LongTensor:
 
@@ -332,6 +337,12 @@ class InternVLChatModel(PreTrainedModel):
             input_ids = input_ids.reshape(B * N)
             selected = (input_ids == self.img_context_token_id)
             assert selected.sum() != 0
+
+            image_indices = torch.where(selected)[0]
+            start_pos = image_indices[0].item()
+            length = len(image_indices)
+
+
             input_embeds[selected] = vit_embeds.reshape(-1, C).to(input_embeds.device)
 
             input_embeds = input_embeds.reshape(B, N, C)
@@ -344,6 +355,8 @@ class InternVLChatModel(PreTrainedModel):
             generation_config=generation_config,
             output_hidden_states=output_hidden_states,
             use_cache=True,
+            image_pose=(start_pos, length),
+            aspect_ratio=aspect_ratio,
             **generate_kwargs,
         )
 

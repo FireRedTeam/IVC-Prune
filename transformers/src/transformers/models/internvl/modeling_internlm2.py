@@ -40,7 +40,7 @@ try:
 except:  # noqa # pylint: disable=bare-except
     BaseStreamer = None
 
-from .configuration_internlm2 import InternLM2Config
+from .configuration_internvl import InternLM2Config
 
 logger = logging.get_logger(__name__)
 
@@ -201,7 +201,7 @@ class InternLM2LinearScalingRotaryEmbedding(InternLM2RotaryEmbedding):
 
 
 # Copied from transformers.model.llama.modeling_llama.LlamaDynamicNTKScalingRotaryEmbedding with Llama->InternLM2
-class InternLM2DynamicNTKScalingRotaryEmbedding(InternLM2RotaryEmbedding):
+class InternLM2DynamicNTKScalingRotaryEmbeddingIVCP(InternLM2RotaryEmbedding):
     """InternLM2RotaryEmbedding extended with Dynamic NTK scaling.
     Credits to the Reddit users /u/bloc97 and /u/emozilla.
     """
@@ -228,6 +228,42 @@ class InternLM2DynamicNTKScalingRotaryEmbedding(InternLM2RotaryEmbedding):
         self.register_buffer('cos_cached', emb.cos().to(dtype), persistent=False)
         self.register_buffer('sin_cached', emb.sin().to(dtype), persistent=False)
 
+    def forward(self, x, position_ids=None, seq_len=None):
+        # Expand inv_freq and position_ids dimensions for batch computation
+        # inv_freq_expanded = self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1)
+        # position_ids_expanded = position_ids[:, None, :].float()
+        # # Compute frequency matrix: [batch_size, dim//2, seq_len]
+        # freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(1, 2)
+        # Concatenate frequency matrix: [batch_size, seq_len, dim]
+        if seq_len != None:
+            if seq_len > self.max_seq_len_cached:
+                self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=torch.float32)
+
+            return (
+                self.cos_cached[:seq_len].to(dtype=x.dtype),
+                self.sin_cached[:seq_len].to(dtype=x.dtype),
+            )
+
+        else:
+
+            if position_ids[0][-1] >  self.max_position_embeddings:
+                base = self.base * (
+                    (self.scaling_factor * seq_len / self.max_position_embeddings) - (self.scaling_factor - 1)
+                ) ** (self.dim / (self.dim - 2))
+                inv_freq = 1.0 / (base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
+
+            else:
+                inv_freq = self.inv_freq
+
+
+
+            pos_ids = position_ids[0].float()
+            freqs = torch.outer(pos_ids, inv_freq.float())
+            emb = torch.cat((freqs, freqs), dim=-1)
+            # Compute cos and sin
+            cos = emb.cos()
+            sin = emb.sin()
+            return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
 
 # Copied from transformers.model.llama.modeling_llama.rotate_half
 def rotate_half(x):
@@ -238,13 +274,27 @@ def rotate_half(x):
 
 
 # Copied from transformers.model.llama.modeling_llama.apply_rotary_pos_emb
+# def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
+#     """Applies Rotary Position Embedding to the query and key tensors."""
+#     cos = cos[position_ids].unsqueeze(unsqueeze_dim)
+#     sin = sin[position_ids].unsqueeze(unsqueeze_dim)
+#     q_embed = (q * cos) + (rotate_half(q) * sin)
+#     k_embed = (k * cos) + (rotate_half(k) * sin)
+#     return q_embed, k_embed
+
+
 def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
     """Applies Rotary Position Embedding to the query and key tensors."""
-    cos = cos[position_ids].unsqueeze(unsqueeze_dim)
-    sin = sin[position_ids].unsqueeze(unsqueeze_dim)
-    q_embed = (q * cos) + (rotate_half(q) * sin)
+
+    cos = cos.unsqueeze(0).unsqueeze(1)
+    sin = sin.unsqueeze(0).unsqueeze(1)
+
+    q_embed = (q * cos) + (rotate_half(q) * sin) # torch.Size([1, 32, 1861, 128])
     k_embed = (k * cos) + (rotate_half(k) * sin)
+
+
     return q_embed, k_embed
+
 
 
 class InternLM2MLP(nn.Module):
@@ -318,7 +368,7 @@ class InternLM2Attention(nn.Module):
             scaling_type = self.config.rope_scaling['type']
             scaling_factor = self.config.rope_scaling['factor']
             if scaling_type == 'dynamic':
-                self.rotary_emb = InternLM2DynamicNTKScalingRotaryEmbedding(
+                self.rotary_emb = InternLM2DynamicNTKScalingRotaryEmbeddingIVCP(
                     self.head_dim,
                     max_position_embeddings=self.max_position_embeddings,
                     base=self.config.rope_theta,
@@ -442,6 +492,7 @@ class InternLM2FlashAttention2(InternLM2Attention):
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        output_value_states: Optional[bool] = False,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         # InternLM2FlashAttention2 attention does not support output_attentions
@@ -480,7 +531,8 @@ class InternLM2FlashAttention2(InternLM2Attention):
         if past_key_value is not None:
             kv_seq_len += past_key_value[0].shape[-2]
 
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        # cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        cos, sin = self.rotary_emb(value_states, position_ids=position_ids)
 
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
@@ -495,6 +547,7 @@ class InternLM2FlashAttention2(InternLM2Attention):
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
 
+
         attn_output = self._flash_attention_forward(
             query_states, key_states, value_states, attention_mask, q_len
         )
@@ -503,6 +556,9 @@ class InternLM2FlashAttention2(InternLM2Attention):
 
         if not output_attentions:
             attn_weights = None
+
+        if output_value_states:
+            return attn_output, attn_weights, past_key_value, value_states, (cos, sin)
 
         return attn_output, attn_weights, past_key_value
 
@@ -626,6 +682,7 @@ class InternLM2DecoderLayer(nn.Module):
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
+        output_value_states: Optional[bool] = False,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -652,31 +709,65 @@ class InternLM2DecoderLayer(nn.Module):
 
         hidden_states = self.attention_norm(hidden_states)
 
-        # Self Attention
-        hidden_states, self_attn_weights, present_key_value = self.attention(
-            hidden_states=hidden_states,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_value=past_key_value,
-            output_attentions=output_attentions,
-            use_cache=use_cache,
-            **kwargs,
-        )
-        hidden_states = residual + hidden_states
+        if not output_value_states:
 
-        # Fully Connected
-        residual = hidden_states
-        hidden_states = self.ffn_norm(hidden_states)
-        hidden_states = self.feed_forward(hidden_states)
-        hidden_states = residual + hidden_states
+            # Self Attention
+            hidden_states, self_attn_weights, present_key_value = self.attention(
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_value=past_key_value,
+                output_attentions=output_attentions,
+                use_cache=use_cache,
+                **kwargs,
+            )
+            hidden_states = residual + hidden_states
 
-        outputs = (hidden_states,)
+            # Fully Connected
+            residual = hidden_states
+            hidden_states = self.ffn_norm(hidden_states)
+            hidden_states = self.feed_forward(hidden_states)
+            hidden_states = residual + hidden_states
 
-        if output_attentions:
-            outputs += (self_attn_weights,)
+            outputs = (hidden_states,)
 
-        if use_cache:
-            outputs += (present_key_value,)
+            if output_attentions:
+                outputs += (self_attn_weights,)
+
+            if use_cache:
+                outputs += (present_key_value,)
+
+
+        else:
+            hidden_states, self_attn_weights, present_key_value, value_states, (cos, sin) = self.attention(
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_value=past_key_value,
+                output_attentions=output_attentions,
+                use_cache=use_cache,
+                **kwargs,
+            )
+            hidden_states = residual + hidden_states
+
+            # Fully Connected
+            residual = hidden_states
+            hidden_states = self.ffn_norm(hidden_states)
+            hidden_states = self.feed_forward(hidden_states)
+            hidden_states = residual + hidden_states
+
+            outputs = (hidden_states,)
+
+            if output_attentions:
+                outputs += (self_attn_weights,)
+
+            if use_cache:
+                outputs += (present_key_value,)
+
+            if output_value_states:
+                outputs += (value_states,)
+
+                outputs += ((cos, sin), )
 
         return outputs
 
@@ -820,12 +911,85 @@ class InternLM2Model(InternLM2PreTrainedModel):
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing
         self.post_init()
+        self.idx = None
+        self.head_dim = self.config.hidden_size // self.config.num_attention_heads
 
     def get_input_embeddings(self):
         return self.tok_embeddings
 
     def set_input_embeddings(self, value):
         self.tok_embeddings = value
+
+
+    def map_thumbnail_token_indices_to_blocks(self, thumbnail_token_indices, target_aspect_ratio):
+        """
+        Map token indices on the thumbnail to corresponding token positions in sub-blocks (vectorized version).
+        
+        Args:
+            thumbnail_token_indices: tensor or list, selected token indices on the thumbnail
+            target_aspect_ratio: (width_blocks, height_blocks), e.g. (2, 2) means a 2x2 block grid
+            
+        Returns:
+            tensor: absolute token positions of all corresponding tokens
+        """
+        tokens_per_side = 16
+        
+        # Ensure input is a tensor
+        if not isinstance(thumbnail_token_indices, torch.Tensor):
+            token_indices = torch.tensor(thumbnail_token_indices, dtype=torch.long)
+        else:
+            token_indices = thumbnail_token_indices
+        
+        device = token_indices.device
+        scale_x, scale_y = target_aspect_ratio
+        
+        # Compute 2D coordinates of thumbnail tokens (vectorized)
+        thumb_rows = token_indices // tokens_per_side  # [N]
+        thumb_cols = token_indices % tokens_per_side   # [N]
+        
+        # Generate all possible offsets
+        dy = torch.arange(scale_y, device=device)  # [scale_y]
+        dx = torch.arange(scale_x, device=device)  # [scale_x]
+        dy_grid, dx_grid = torch.meshgrid(dy, dx, indexing='ij')  # [scale_y, scale_x]
+        dy_flat = dy_grid.flatten()  # [scale_y * scale_x]
+        dx_flat = dx_grid.flatten()  # [scale_y * scale_x]
+        
+        # Expand dimensions for broadcasting [N, 1] and [1, scale_y * scale_x]
+        thumb_rows_exp = thumb_rows.unsqueeze(1)  # [N, 1]
+        thumb_cols_exp = thumb_cols.unsqueeze(1)  # [N, 1]
+        dy_exp = dy_flat.unsqueeze(0)  # [1, scale_y * scale_x]
+        dx_exp = dx_flat.unsqueeze(0)  # [1, scale_y * scale_x]
+        
+        # Compute expanded coordinates [N, scale_y * scale_x]
+        expanded_rows = thumb_rows_exp * scale_y + dy_exp
+        expanded_cols = thumb_cols_exp * scale_x + dx_exp
+        
+        # Determine which block each token belongs to
+        block_rows = expanded_rows // tokens_per_side
+        block_cols = expanded_cols // tokens_per_side
+        
+        # Create validity mask (check for out-of-bounds)
+        valid_mask = (block_rows < target_aspect_ratio[1]) & (block_cols < target_aspect_ratio[0])
+        
+        # Keep only valid coordinates
+        valid_expanded_rows = expanded_rows[valid_mask]
+        valid_expanded_cols = expanded_cols[valid_mask]
+        valid_block_rows = block_rows[valid_mask]
+        valid_block_cols = block_cols[valid_mask]
+        
+        # Compute block ID
+        block_ids = valid_block_rows * target_aspect_ratio[0] + valid_block_cols
+        
+        # Compute local coordinates within the block
+        local_rows = valid_expanded_rows % tokens_per_side
+        local_cols = valid_expanded_cols % tokens_per_side
+        tokens_in_block = local_rows * tokens_per_side + local_cols
+        
+        # Compute absolute token positions
+        token_positions = tokens_in_block + block_ids * 256
+        
+        return token_positions  # Return as list if needed
+
 
     def _prepare_decoder_attention_mask(self, attention_mask, input_shape, inputs_embeds, past_key_values_length):
         # create causal mask
@@ -984,6 +1148,381 @@ class InternLM2Model(InternLM2PreTrainedModel):
         )
 
 
+    def IVCP_forward_flashattention(
+        self,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        ivcp_config=None,
+        image_pose=None,
+        aspect_ratio=None,
+    ) -> Union[Tuple, BaseModelOutputWithPast]:
+
+        IVCP_k = ivcp_config['ivcp_k']
+        IVCP_image_token_start_index = image_pose[0]
+        IVCP_image_token_length = image_pose[1]
+
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        use_cache = use_cache if use_cache is not None else self.config.use_cache
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        if self.config.attn_implementation == 'flash_attention_2':
+            _import_flash_attn()
+
+        if input_ids is not None and inputs_embeds is not None:
+            raise ValueError('You cannot specify both input_ids and inputs_embeds at the same time')
+        elif input_ids is not None:
+            batch_size, seq_length = input_ids.shape[:2]
+        elif inputs_embeds is not None:
+            batch_size, seq_length = inputs_embeds.shape[:2]
+        else:
+            raise ValueError('You have to specify either input_ids or inputs_embeds')
+
+        seq_length_with_past = seq_length
+        past_key_values_length = 0
+        if past_key_values is not None:
+            past_key_values_length = past_key_values[0][0].shape[2]
+            seq_length_with_past = seq_length_with_past + past_key_values_length
+
+        if position_ids is None:
+            device = input_ids.device if input_ids is not None else inputs_embeds.device
+            position_ids = torch.arange(
+                past_key_values_length, seq_length + past_key_values_length, dtype=torch.long, device=device
+            )
+            position_ids = position_ids.unsqueeze(0)
+
+        if inputs_embeds is None:
+            inputs_embeds = self.tok_embeddings(input_ids)
+
+        if self.config.attn_implementation == 'flash_attention_2':
+            attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
+        else:
+            if attention_mask is None:
+                attention_mask = torch.ones(
+                    (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
+                )
+            attention_mask = self._prepare_decoder_attention_mask(
+                attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
+            )
+
+        hidden_states = inputs_embeds
+
+        if self.gradient_checkpointing and self.training:
+            if use_cache:
+                logger.warning_once(
+                    '`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`...'
+                )
+                use_cache = False
+
+        all_hidden_states = () if output_hidden_states else None
+        all_self_attns = () if output_attentions else None
+        next_decoder_cache = () if use_cache else None
+
+        device = self.device
+        pruned_position_ids = position_ids
+
+        if past_key_values is not None and self.idx is not None:
+            past_key_values = self.prune_past_key_values(past_key_values, self.keep_indexs, self.idx)
+            self.idx = None
+
+        for idx, decoder_layer in enumerate(self.layers):
+            if output_hidden_states:
+                all_hidden_states += (hidden_states,)
+            past_key_value = past_key_values[idx] if past_key_values is not None else None
+
+            if self.gradient_checkpointing and self.training:
+
+                def create_custom_forward(module):
+                    def custom_forward(*inputs):
+                        return module(*inputs, output_attentions, None)
+
+                    return custom_forward
+
+                layer_outputs = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(decoder_layer),
+                    hidden_states,
+                    attention_mask,
+                    position_ids,
+                    None,
+                )
+            else:
+                if hidden_states.shape[1] != 1:
+                    if idx < IVCP_k - 1:
+                        layer_outputs = decoder_layer(
+                            hidden_states,
+                            attention_mask=attention_mask,
+                            position_ids=position_ids,
+                            past_key_value=past_key_value,
+                            output_attentions=output_attentions,
+                            use_cache=use_cache,
+                        )
+                    elif idx == IVCP_k - 1:
+                        _, (pe_cos, pe_sin), value_weights = self.compute_attention_weights(
+                            hidden_states, attention_mask, position_ids, idx
+                        )
+                        layer_outputs = decoder_layer(
+                            hidden_states,
+                            attention_mask=attention_mask,
+                            position_ids=position_ids,
+                            past_key_value=past_key_value,
+                            output_attentions=output_attentions,
+                            use_cache=use_cache,
+                        )
+                    elif idx == IVCP_k:
+                        value_similarity = value_weights
+                        value_similarity_avg = torch.mean(value_similarity, dim=1)[0]
+
+                        value_attn_all_question = torch.mean(
+                            value_similarity_avg[IVCP_image_token_start_index + IVCP_image_token_length + 2:], dim=0)
+                        value_attn_all_question_tok_image = value_attn_all_question[
+                            IVCP_image_token_start_index + IVCP_image_token_length - 256:
+                            IVCP_image_token_start_index + IVCP_image_token_length
+                        ]
+
+                        image_tail_start = IVCP_image_token_start_index + IVCP_image_token_length - 256
+                        top_attention_rank_index = value_attn_all_question_tok_image.topk(max(1, round(256 * 0.01))).indices + image_tail_start
+
+                        new_dim = torch.cat(
+                            (
+                                top_attention_rank_index,
+                                torch.arange(IVCP_image_token_start_index + IVCP_image_token_length + 2, seq_length_with_past, device=device),
+                            )
+                        )
+
+                        value_related_attention = torch.mean(value_similarity_avg[new_dim], dim=0)
+                        value_related_attention_tok_image = value_related_attention[
+                            IVCP_image_token_start_index + IVCP_image_token_length - 256:
+                            IVCP_image_token_start_index + IVCP_image_token_length
+                        ]
+                        # Sort all thumbnail tokens by value attention score (absolute indices, descending)
+                        all_value_scores_indices = (
+                            value_related_attention_tok_image.topk(value_related_attention_tok_image.shape[0]).indices
+                            + image_tail_start
+                        )
+
+                        cos_mean = pe_cos[IVCP_image_token_start_index:IVCP_image_token_start_index + IVCP_image_token_length].mean(dim=-1)
+                        sin_mean = pe_sin[IVCP_image_token_start_index:IVCP_image_token_start_index + IVCP_image_token_length].mean(dim=-1)
+
+                        n_blocks = IVCP_image_token_length // 256
+                        cos_mean_segments = cos_mean.view(n_blocks, 256)
+                        sin_mean_segments = sin_mean.view(n_blocks, 256)
+                        _, cos_top_indices = torch.topk(cos_mean_segments, k=max(1, round(256 * 0.1)), dim=-1)
+                        _, sin_top_indices = torch.topk(sin_mean_segments, k=max(1, round(256 * 0.1)), dim=-1)
+
+                        for i in range(0, n_blocks):
+                            cos_top_indices[i] = cos_top_indices[i] + i * 256 + IVCP_image_token_start_index
+                            sin_top_indices[i] = sin_top_indices[i] + i * 256 + IVCP_image_token_start_index
+
+                        cos_top_indices = cos_top_indices.view(-1)
+                        sin_top_indices = sin_top_indices.view(-1)
+
+                        # Extract cos and sin top indices for the thumbnail (last block)
+                        thumbnail_cos_indices = cos_top_indices[cos_top_indices >= image_tail_start]
+                        thumbnail_sin_indices = sin_top_indices[sin_top_indices >= image_tail_start]
+
+                        # Deduplicate cos+sin indices for the thumbnail
+                        thumbnail_cos_sin_unique = torch.unique(
+                            torch.cat([thumbnail_cos_indices, thumbnail_sin_indices]), sorted=True
+                        )
+
+                        # Compute the number of top_value_related_attention tokens:
+                        # after masking tokens already in cos+sin, fill up to 50% of thumbnail (128 tokens)
+                        thumbnail_target = max(1, round(256 * 0.5))  # 128
+                        remaining_thumb = max(0, thumbnail_target - thumbnail_cos_sin_unique.numel())
+
+                        if remaining_thumb > 0:
+                            thumb_mask = ~torch.isin(all_value_scores_indices, thumbnail_cos_sin_unique)
+                            top_value_related_attention_abs = all_value_scores_indices[thumb_mask][:remaining_thumb]
+                        else:
+                            top_value_related_attention_abs = torch.empty(0, device=device, dtype=torch.long)
+
+                        # Convert to local indices (0-255) for block_foreground mapping
+                        top_value_related_attention = top_value_related_attention_abs - image_tail_start
+
+                        if IVCP_image_token_length != 256:
+                            block_foreground = self.map_thumbnail_token_indices_to_blocks(
+                                top_value_related_attention, aspect_ratio
+                            ).to(device=device, dtype=torch.long)
+                            block_foreground = block_foreground + IVCP_image_token_start_index
+                        else:
+                            block_foreground = torch.empty(0, device=device, dtype=torch.long)
+
+                        # Fix thumbnail selection at 50% (fill with value attention after deduplicating cos+sin)
+                        selected_thumbnail_indices = torch.unique(
+                            torch.cat([thumbnail_cos_sin_unique, top_value_related_attention_abs]),
+                            sorted=True
+                        )
+
+                        # cos/sin top indices for sub-blocks (excluding thumbnail portion)
+                        sub_block_cos = cos_top_indices[cos_top_indices < image_tail_start]
+                        sub_block_sin = sin_top_indices[sin_top_indices < image_tail_start]
+
+                        # Merge all priority indices: selected thumbnail + sub-block cos/sin + block_foreground + top_attention_rank_index
+                        priority_indices = torch.cat(
+                            (selected_thumbnail_indices, sub_block_cos, sub_block_sin, block_foreground, top_attention_rank_index)
+                        )
+                        priority_indices_unique = torch.unique(priority_indices, sorted=True)
+                        target_image_token_count = max(1, round(IVCP_image_token_length * 0.5))
+                        remaining_count = target_image_token_count - priority_indices_unique.numel()
+
+                        if remaining_count > 0:
+                            mask = ~torch.isin(all_value_scores_indices, priority_indices_unique)
+                            additional_indices = all_value_scores_indices[mask][:remaining_count]
+                            selected_image_indices = torch.cat((priority_indices_unique, additional_indices))
+                        else:
+                            selected_image_indices = priority_indices_unique[:target_image_token_count]
+
+                        selected_image_indices = torch.unique(selected_image_indices, sorted=True)
+                        keep_indexs = torch.cat(
+                            (
+                                torch.arange(IVCP_image_token_start_index, device=device),
+                                selected_image_indices,
+                                torch.arange(IVCP_image_token_start_index + IVCP_image_token_length, seq_length_with_past, device=device),
+                            )
+                        )
+                        self.keep_indexs = keep_indexs
+                        self.idx = idx
+
+                        pruned_hidden_states = hidden_states[:, keep_indexs, :]
+                        seq_length_with_past = len(keep_indexs)
+                        pruned_position_ids = position_ids[:, keep_indexs]
+
+
+                        layer_outputs = decoder_layer(
+                            pruned_hidden_states,
+                            attention_mask=attention_mask,
+                            position_ids=pruned_position_ids,
+                            past_key_value=past_key_value,
+                            output_attentions=output_attentions,
+                            use_cache=use_cache,
+                        )
+                    else:
+                        layer_outputs = decoder_layer(
+                            hidden_states,
+                            attention_mask=attention_mask,
+                            position_ids=pruned_position_ids,
+                            past_key_value=past_key_value,
+                            output_attentions=output_attentions,
+                            use_cache=use_cache,
+                        )
+                else:
+                    layer_outputs = decoder_layer(
+                        hidden_states,
+                        attention_mask=attention_mask,
+                        position_ids=position_ids,
+                        past_key_value=past_key_value,
+                        output_attentions=output_attentions,
+                        use_cache=use_cache,
+                    )
+
+            hidden_states = layer_outputs[0]
+
+            if use_cache:
+                next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
+
+            if output_attentions:
+                all_self_attns += (layer_outputs[1],)
+
+        hidden_states = self.norm(hidden_states)
+
+        if output_hidden_states:
+            all_hidden_states += (hidden_states,)
+
+        next_cache = next_decoder_cache if use_cache else None
+        if not return_dict:
+            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
+        return BaseModelOutputWithPast(
+            last_hidden_state=hidden_states,
+            past_key_values=next_cache,
+            hidden_states=all_hidden_states,
+            attentions=all_self_attns,
+        )
+
+    def compute_attention_weights(self, hidden_states, attention_mask, position_ids, layer_idx):
+
+        decoder_layer = self.layers[layer_idx]
+        self_attn = decoder_layer.attention
+
+        bsz, q_len, _ = hidden_states.size()
+
+        qkv_states = self_attn.wqkv(hidden_states)
+
+        qkv_states = rearrange(
+            qkv_states,
+            'b q (h gs d) -> b q h gs d',
+            gs=2 + self_attn.num_key_value_groups,
+            d=self_attn.head_dim,
+        )
+        query_states = qkv_states[..., : self_attn.num_key_value_groups, :]
+        query_states = rearrange(query_states, 'b q h gs d -> b q (h gs) d')
+
+        key_states = qkv_states[..., -2, :]
+        value_states = qkv_states[..., -1, :]
+
+        query_states = query_states.transpose(1, 2)
+        key_states = key_states.transpose(1, 2)
+        value_states = value_states.transpose(1, 2)
+        kv_seq_len = key_states.shape[-2]
+
+        cos, sin = self_attn.rotary_emb(value_states, position_ids)
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+
+
+        value_weights = torch.matmul(value_states, value_states.transpose(2, 3)) / math.sqrt(self_attn.head_dim)
+        value_weights = nn.functional.softmax(value_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+
+
+        key_states = repeat_kv(key_states, self_attn.num_key_value_groups)
+        value_states = repeat_kv(value_states, self_attn.num_key_value_groups)
+
+        attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self_attn.head_dim)
+        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+
+        
+        return attn_weights, (cos, sin), value_weights
+
+
+    def prune_past_key_values(self, past_key_values, keep_indexs, current_layer_idx):
+
+        if current_layer_idx <= 0:
+            return past_key_values
+
+        # The first k layers that need to be pruned
+        to_prune_layers = past_key_values[:current_layer_idx]
+        # The remaining N-k layers that have already been pruned
+        kept_layers = past_key_values[current_layer_idx:]
+        
+        pruned_layers_list = []
+        # Iterate over each layer that needs to be pruned
+
+        for key, value in to_prune_layers:
+            # Dimensions are typically [batch_size, num_heads, seq_len, head_dim]
+            # We prune along the seq_len dimension (dim=2)
+            
+            # 1. Prune
+            pruned_key = torch.index_select(key, dim=2, index=keep_indexs)
+            pruned_value = torch.index_select(value, dim=2, index=keep_indexs)
+                    # ==> Internal check <==
+
+            # 2. Force creation of a physically contiguous copy (this is the most critical step!)
+            pruned_key = pruned_key.contiguous()
+            pruned_value = pruned_value.contiguous()
+            
+            pruned_layers_list.append((pruned_key, pruned_value))
+
+        # Merge the newly generated, contiguous, pruned KV Cache with the original unprocessed portion
+        return tuple(pruned_layers_list) + kept_layers
+
+
 # Modified from transformers.model.llama.modeling_llama.LlamaForCausalLM
 class InternLM2ForCausalLM(InternLM2PreTrainedModel):
     _auto_class = 'AutoModelForCausalLM'
@@ -995,7 +1534,7 @@ class InternLM2ForCausalLM(InternLM2PreTrainedModel):
         self.model = InternLM2Model(config)
         self.vocab_size = config.vocab_size
         self.output = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-
+        self.ivcp_config = None
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -1031,6 +1570,8 @@ class InternLM2ForCausalLM(InternLM2PreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        image_pose: Optional[list] = None,
+        aspect_ratio: Optional[list] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         r"""
         Args:
@@ -1064,18 +1605,39 @@ class InternLM2ForCausalLM(InternLM2PreTrainedModel):
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_values=past_key_values,
-            inputs_embeds=inputs_embeds,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
+
+        if self.ivcp_config == None:
+
+            outputs = self.model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                inputs_embeds=inputs_embeds,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+
+        else:
+            outputs = self.model.IVCP_forward_flashattention(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                inputs_embeds=inputs_embeds,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+                ivcp_config=self.ivcp_config,
+                image_pose=image_pose,
+                aspect_ratio=aspect_ratio,
+            )
+
 
         hidden_states = outputs[0]
         logits = self.output(hidden_states)
@@ -1125,6 +1687,9 @@ class InternLM2ForCausalLM(InternLM2PreTrainedModel):
             input_ids = input_ids[:, remove_prefix_length:]
 
         position_ids = kwargs.get('position_ids', None)
+        image_pose = kwargs.get('image_pose', None)
+        aspect_ratio= kwargs.get('aspect_ratio', None)
+
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
             position_ids = attention_mask.long().cumsum(-1) - 1
@@ -1144,6 +1709,8 @@ class InternLM2ForCausalLM(InternLM2PreTrainedModel):
                 'past_key_values': past_key_values,
                 'use_cache': kwargs.get('use_cache'),
                 'attention_mask': attention_mask,
+                'image_pose': image_pose,
+                'aspect_ratio': aspect_ratio
             }
         )
         return model_inputs

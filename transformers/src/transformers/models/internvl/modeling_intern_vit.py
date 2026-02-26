@@ -18,7 +18,7 @@ from transformers.modeling_outputs import (BaseModelOutput,
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import logging
 
-from .configuration_intern_vit import InternVisionConfig
+from .configuration_internvl import InternVisionConfig
 
 try:
     from flash_attn.bert_padding import pad_input, unpad_input
