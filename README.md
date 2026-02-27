@@ -47,14 +47,12 @@ Open Source Plan for Qwen, LLaVA, InternVL, DeepSeek Support
 **Supported LVLMs**
 
   - ✅ **Qwen-VL Support**  ([transformers code](transformers/src/transformers/models/qwen2_5_vl/modeling_qwen2_5_vl.py))
-      -  Qwen2.5-VL
-      -  Qwen2-VL
 
   - ✅ **LLaVA-v1.5 Support**  ([transformers code](transformers/src/transformers/models/llama/modeling_llama.py))
 
   - ✅ **InternVL2.5 Support**  ([transformers code](transformers/src/transformers/models/internvl/modeling_internlm2.py))
 
-  - [ ] **DeepSeek-VL2 Support**
+  - ✅ **DeepSeek-VL2 Support** ([transformers code](DeepSeek-VL2/deepseek_vl2/models/modeling_deepseek.py))
 
 
 
@@ -96,7 +94,7 @@ pip install qwen_vl_utils
 ```
 
 ## Dataset
-We provide MDETR format annotations for RefCOCO grounding dataset on [Hugging Face](https://huggingface.co/datasets/sunzc-sunny/IVCP).
+For RefCOCO grounding dataset, We provide MDETR format annotations on [Hugging Face](https://huggingface.co/datasets/sunzc-sunny/IVCP).
 
 ### Setup Instructions
 
@@ -108,6 +106,7 @@ We provide MDETR format annotations for RefCOCO grounding dataset on [Hugging Fa
 
 Standard models:
 ```bash
+cd IVCP/VLMEvalKit
 python convert_to_tsv.py \\
     --images_folder /path/to/train2014/ \\
     --annotations_files /path/to/finetune_refcoco_val.json \\
@@ -116,6 +115,7 @@ python convert_to_tsv.py \\
 
 Qwen2.5-VL (resized coordinates to multiples of 28):
 ```bash
+cd IVCP/VLMEvalKit
 python convert_to_tsv.py \\
     --images_folder /path/to/train2014/ \\
     --annotations_files /path/to/finetune_refcoco_val.json \\
