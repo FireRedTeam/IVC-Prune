@@ -23,7 +23,8 @@ tabulate
 tiktoken
 timeout-decorator
 tqdm
-transformers
+# transformers: use local installation
+# pip install -e /mnt/public/usr/sunzhichao/IVCP/transformers
 typing_extensions
 validators
 xlsxwriter

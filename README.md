@@ -68,22 +68,31 @@ Open Source Plan for Qwen, LLaVA, InternVL, DeepSeek Support
 ## Installation
 Based on VLMEvalKit and transformers. We have supported grounding data testing code in VLMEvalKit.
 
-
-Please follow the guide to install and set up of the VLMEvalKit. 
-```
+```bash
+# Step 1: Create and activate conda environment
 conda create --name IVCP python=3.10.6 -y
 conda activate IVCP
 
-cd VLMEvalKit
+# Step 2: Install PyTorch (cu118)
+pip install torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 --index-url https://download.pytorch.org/whl/cu118
+
+# Step 3: Install local transformers
+pip install -e /path/to/IVCP/transformers
+
+# Step 4: Install flash-attn
+pip install flash-attn==2.5.8 --no-build-isolation -v
+
+# Step 5: Install DeepSeek-VL2
+cd /path/to/IVCP/DeepSeek-VL2
+pip install -e .
+
+# Step 6: Install VLMEvalKit
+cd /path/to/IVCP/VLMEvalKit
 pip install -e .
 
 pip uninstall numba -y
 pip install numba
 pip install qwen_vl_utils
-
-pip install torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 --index-url https://download.pytorch.org/whl/cu118
-pip install flash-attn==2.5.8 --no-build-isolation -v
-
 ```
 
 ## Dataset
@@ -114,13 +123,6 @@ python convert_to_tsv.py \\
     --qwen25
 ```
 
-Batch processing all splits:
-```bash
-python convert_to_tsv.py \\    
-    --images_folder /path/to/train2014/ \\    
-    --annotations_files /path/to/finetune_refcoco_val.json \\
-    --output_dir /path/to/output/
-```
 
 **Step 3: Configure Paths**
 

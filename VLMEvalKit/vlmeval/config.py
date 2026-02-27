@@ -833,6 +833,14 @@ deepseekvl2_series = {
         DeepSeekVL2, model_path="deepseek-ai/deepseek-vl2-small"
     ),
     "deepseek_vl2": partial(DeepSeekVL2, model_path="deepseek-ai/deepseek-vl2"),
+
+    "deepseek_vl2_small_ivcp": partial(
+        DeepSeekVL2IVCP, 
+        model_path="/mnt/public/usr/sunzhichao/hf_hub/models--deepseek-ai--deepseek-vl2-small",
+        ivcp_config={
+            "ivcp_k": 17,
+            }
+    ),
 }
 
 
@@ -1337,6 +1345,7 @@ model_groups = [
     gemma_series,
     long_vita_series,
     ristretto_series,
+    deepseekvl2_series
 ]
 
 for grp in model_groups:

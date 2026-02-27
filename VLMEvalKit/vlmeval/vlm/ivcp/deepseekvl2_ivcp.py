@@ -288,7 +288,6 @@ class DeepSeekVL2IVCP(BaseModel):
                 conversation.append(dict(role='<|Assistant|>', content=''))
 
             else:
-                # message [{'type': 'image', 'value': '/mnt/public/usr/sunzhichao/benchmark/images/debug/3.jpg'}, {'type': 'text', 'value': 'right man'}]
                 def prepare_itlist(msgs):
                     content, images = '', []
                     for s in msgs:
@@ -311,7 +310,6 @@ class DeepSeekVL2IVCP(BaseModel):
                         content, images = prepare_itlist(msgs['content'])
                         conversation.append(dict(role=role, content=content, images=images))
                 conversation.append(dict(role='<|Assistant|>', content=''))
-                # conversation [{'role': '<|User|>', 'content': '<image>\n<|ref|>man on right<|ref|>', 'images': ['/mnt/public/usr/sunzhichao/benchmark/images/debug/2.jpg']}, {'role': '<|Assistant|>', 'content': ''}]            exit()
 
         elif dataset == 'MMMU_DEV_VAL':
 
@@ -325,7 +323,6 @@ class DeepSeekVL2IVCP(BaseModel):
                         image_idx += 1
                     elif s['type'] == 'text':
                         content += s['value']
-                # content = '<image>' * (image_idx-1) + '\n' + content
                 content = '<image>' * (image_idx - 1) + '\n' + content
                 return content, images
 
@@ -413,15 +410,7 @@ class DeepSeekVL2IVCP(BaseModel):
         if self.model.language.ivcp_config != None:
             self.model.language.ivcp_config['image_start_indices'] = image_start_indices
             self.model.language.ivcp_config['image_token_lengths'] = image_token_lengths
-        # inputs_embeds, past_key_values = self.model.incremental_prefilling(
-        #     input_ids=prepare_inputs.input_ids,
-        #     images=prepare_inputs.images,
-        #     images_seq_mask=prepare_inputs.images_seq_mask,
-        #     images_spatial_crop=prepare_inputs.images_spatial_crop,
-        #     attention_mask=prepare_inputs.attention_mask,
-        #     chunk_size=512
-        # )
-        # run the model to get the response
+
         outputs = self.model.generate(
             inputs_embeds=inputs_embeds,
             input_ids=prepare_inputs.input_ids,
