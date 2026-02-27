@@ -187,21 +187,21 @@ class DeepseekV2RotaryEmbeddingIVCP(nn.Module):
         self.register_buffer("sin_cached", emb.sin().to(dtype), persistent=False)
 
     def forward(self, x, position_ids):
-        # 扩展inv_freq和position_ids的维度以进行批量计算
+        # Expand dimensions of inv_freq and position_ids for batch computation
         # inv_freq_expanded = self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1)
         # position_ids_expanded = position_ids[:, None, :].float()
-        # # 计算频率矩阵: [batch_size, dim//2, seq_len]
+        # # Compute frequency matrix: [batch_size, dim//2, seq_len]
         # freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(1, 2)
-        # 拼接频率矩阵: [batch_size, seq_len, dim]
+        # Concatenate frequency matrix: [batch_size, seq_len, dim]
         if position_ids.dim() == 1:
-            # 如果是1D，直接使用
+            # If 1D, use directly
             pos_ids = position_ids.float()
         else:
-            # 如果是2D，取第一个batch（假设所有batch的position_ids相同）
+            # If 2D, take the first batch (assuming all batches have the same position_ids)
             pos_ids = position_ids[0].float()
         freqs = torch.outer(pos_ids, self.inv_freq.float())
         emb = torch.cat((freqs, freqs), dim=-1)
-        # 计算cos和sin
+        # Compute cos and sin
         cos = emb.cos()
         sin = emb.sin()
         return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
@@ -815,7 +815,7 @@ class DeepseekV2Attention(nn.Module):
 
         self.kv_a_proj_with_mqa = nn.Linear(
             self.hidden_size,
-            config.kv_lora_rank + config.qk_rope_head_dim, # 压缩维度和rope维度
+            config.kv_lora_rank + config.qk_rope_head_dim,  # Compressed dimension and RoPE dimension
             bias=config.attention_bias,
         )
         self.kv_a_layernorm = DeepseekV2RMSNorm(config.kv_lora_rank)
@@ -919,11 +919,11 @@ class DeepseekV2Attention(nn.Module):
         else:
             q = self.q_b_proj(self.q_a_layernorm(self.q_a_proj(hidden_states)))
         q = q.view(bsz, q_len, self.num_heads, self.q_head_dim).transpose(1, 2)
-        # 分离rope 和 非rope 部分
+        # Separate RoPE and non-RoPE parts
         q_nope, q_pe = torch.split(
             q, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1
         )
-        # kv 投影，输出compressed_kv + k_pe
+        # KV projection, outputs compressed_kv + k_pe
         compressed_kv = self.kv_a_proj_with_mqa(hidden_states)
         compressed_kv, k_pe = torch.split(
             compressed_kv, [self.kv_lora_rank, self.qk_rope_head_dim], dim=-1
@@ -935,7 +935,7 @@ class DeepseekV2Attention(nn.Module):
 
 
 
-        # k_pe是单头的！ 这里的num heads 是1 
+        # k_pe is single-head! Here num_heads is 1
         k_pe = k_pe.view(bsz, q_len, 1, self.qk_rope_head_dim).transpose(1, 2)
 
         kv_seq_len = k_pe.shape[-2]
@@ -956,23 +956,23 @@ class DeepseekV2Attention(nn.Module):
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
             compressed_kv = compressed_kv.unsqueeze(1)
-            # past_key_value.update() 缓存的是：
+            # past_key_value.update() caches:
             # k_pe: [batch, 1, seq_len, qk_rope_head_dim] --> [1,1,656,64]  RoPE Key
-            # compressed_kv : [batch, 1, seq_len, kv_lora_rank] --> [1,1,656,512]  压缩的KV
+            # compressed_kv : [batch, 1, seq_len, kv_lora_rank] --> [1,1,656,512]  Compressed KV
             k_pe, compressed_kv = past_key_value.update(k_pe, compressed_kv, self.layer_idx, cache_kwargs)
             compressed_kv = compressed_kv.squeeze(1)
 
         kv_b_proj = self.kv_b_proj.weight.view(self.num_heads, -1, self.kv_lora_rank)
-        q_absorb = kv_b_proj[:, :self.qk_nope_head_dim, :]   # 用于query 变换
-        out_absorb = kv_b_proj[:, self.qk_nope_head_dim:, :] # 用于输出变换
+        q_absorb = kv_b_proj[:, :self.qk_nope_head_dim, :]   # For query transformation
+        out_absorb = kv_b_proj[:, self.qk_nope_head_dim:, :]  # For output transformation
 
         compute_out_absorb = out_absorb.clone()
 
         q_nope = torch.matmul(q_nope, q_absorb)
 
 
-        attn_weights = (torch.matmul(q_pe, k_pe.mT) +  # rope部分
-                        torch.matmul(q_nope, compressed_kv.unsqueeze(-3).mT) # 压缩KV部分
+        attn_weights = (torch.matmul(q_pe, k_pe.mT) +  # RoPE part
+                        torch.matmul(q_nope, compressed_kv.unsqueeze(-3).mT)  # Compressed KV part
                         ) * self.softmax_scale
         if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
             raise ValueError(
@@ -996,7 +996,7 @@ class DeepseekV2Attention(nn.Module):
         attn_weights = nn.functional.dropout(
             attn_weights, p=self.attention_dropout, training=self.training
         )
-        # 输出变换
+        # Output transformation
         attn_output = torch.einsum('bhql,blc->bhqc', attn_weights, compressed_kv)
 
         attn_output = torch.matmul(attn_output, out_absorb.mT)
@@ -1740,67 +1740,67 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
 
     def thumbnail_tokens_to_detailed_blocks(self, thumb_token_ids, target_aspect_ratio):
         """
-        将thumbnail中的token索引映射到detailed blocks中的对应区域
-        每个thumbnail token对应detailed blocks中的一个区域（多个tokens）
-        
+        Map token indices from thumbnail to corresponding regions in detailed blocks.
+        Each thumbnail token corresponds to a region in detailed blocks (multiple tokens).
+
         Args:
-            thumb_token_ids: thumbnail中的token索引列表
-            target_aspect_ratio: (width_tiles, height_tiles) 切分的网格比例
-        
+            thumb_token_ids: List of token indices in thumbnail.
+            target_aspect_ratio: (width_tiles, height_tiles) Grid split ratio.
+
         Returns:
-            detailed_token_ids: 对应的detailed block token索引列表
+            detailed_token_ids: List of corresponding detailed block token indices.
         """
         h = w = 14  # token grid size
-        
-        # Global view和separator的token数量
+
+        # Number of tokens for Global view and separator
         global_tokens = h * (w + 1)  # 210
         separator_tokens = 1  # 1
-        
-        num_width_tiles = target_aspect_ratio[0]   # 列数
-        num_height_tiles = target_aspect_ratio[1]  # 行数
-        
+
+        num_width_tiles = target_aspect_ratio[0]   # Number of columns
+        num_height_tiles = target_aspect_ratio[1]  # Number of rows
+
         detailed_token_ids = []
-        
+
         for thumb_token_id in thumb_token_ids:
-            # 跳过超出global view范围的token
+            # Skip tokens beyond global view range
             if thumb_token_id >= global_tokens:
                 continue
-                
-            # 将token索引转换为(ty, tx)坐标
+
+            # Convert token index to (ty, tx) coordinates
             ty = thumb_token_id // (w + 1)
             tx = thumb_token_id % (w + 1)
-            
-            # 跳过行分隔符token (tx == 14)
+
+            # Skip row separator tokens (tx == 14)
             if tx >= w:
                 continue
-                
-            # 计算该thumbnail token在detailed blocks中对应的区域
-            # thumbnail是14x14，detailed blocks是(num_width_tiles*14) x (num_height_tiles*14)
-            
-            # 计算y方向的映射区域
+
+            # Calculate the corresponding region in detailed blocks for this thumbnail token
+            # Thumbnail is 14x14, detailed blocks are (num_width_tiles*14) x (num_height_tiles*14)
+
+            # Calculate y-direction mapping region
             detailed_ty_start = ty * num_height_tiles
             detailed_ty_end = (ty + 1) * num_height_tiles
-            
-            # 计算x方向的映射区域  
+
+            # Calculate x-direction mapping region
             detailed_tx_start = tx * num_width_tiles
             detailed_tx_end = (tx + 1) * num_width_tiles
-            
-            # 遍历该区域内的所有tokens
+
+            # Iterate through all tokens in this region
             for detailed_ty in range(detailed_ty_start, detailed_ty_end):
                 for detailed_tx in range(detailed_tx_start, detailed_tx_end):
-                    # 确保不超出边界
+                    # Ensure not exceeding boundaries
                     if detailed_ty >= num_height_tiles * h or detailed_tx >= num_width_tiles * w:
                         continue
-                        
-                    # 计算在local views中的token索引
-                    # Local views排列：(num_height_tiles * h) 行 x (num_width_tiles * w + 1) 列
+
+                    # Calculate token index in local views
+                    # Local views layout: (num_height_tiles * h) rows x (num_width_tiles * w + 1) columns
                     local_index = detailed_ty * (num_width_tiles * w + 1) + detailed_tx
-                    
-                    # 在全局sequence中的索引
+
+                    # Index in global sequence
                     detailed_token_id = global_tokens + separator_tokens + local_index
                     detailed_token_ids.append(detailed_token_id.item())
-        
-        # 去重并排序
+
+        # Deduplicate and sort
         detailed_token_ids = sorted(list(set(detailed_token_ids)))
         
         return detailed_token_ids
@@ -1819,8 +1819,8 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
         device
     ):
         """
-        处理带换行符的detail images
-        每行有(img_w + 1)个token，最后一个是换行符
+        Process detail images with newline characters.
+        Each row has (img_w + 1) tokens, with the last one being a newline token.
         """
         valid_scores = []
         valid_indices_map = []
@@ -1837,10 +1837,10 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
         
         if len(valid_scores) == 0:
             return []
-            
+
         valid_scores = torch.stack(valid_scores)
-        
-        # 对有效的img_h x img_w应用window selection
+
+        # Apply window selection to valid img_h x img_w
         selected_local = self._process_single_image_window(
             valid_scores,
             img_h,
@@ -1851,8 +1851,8 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
             max_window_size,
             device
         )
-        
-        # 转换回包含换行符的索引空间
+
+        # Convert back to index space with newlines
         selected_with_newlines = [
             valid_indices_map[idx] for idx in selected_local
         ]
@@ -1860,7 +1860,7 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
         return selected_with_newlines
 
 
-    # 复用InternVL的辅助函数
+    # Reuse InternVL helper functions
     def _process_single_image_window(
         self,
         attention_scores,
@@ -1872,7 +1872,7 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
         max_window_size,
         device
     ):
-        """对单个图像应用2D Window selection"""
+        """Apply 2D Window selection to a single image"""
         window_h = self._find_best_divisor(img_h, target_window_size, min_window_size, max_window_size)
         window_w = self._find_best_divisor(img_w, target_window_size, min_window_size, max_window_size)
         
@@ -1885,19 +1885,19 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
         keep_per_window = max(1, round(tokens_per_window * keep_ratio))
         
         selected_indices = []
-        
-        # 处理完整窗口
+
+        # Process full windows
         for i in range(num_windows_h):
             for j in range(num_windows_w):
                 row_start = i * window_h
                 row_end = (i + 1) * window_h
                 col_start = j * window_w
                 col_end = (j + 1) * window_w
-                
+
                 window_scores = attention_scores_2d[row_start:row_end, col_start:col_end]
                 flat_window = window_scores.flatten()
                 _, local_indices = torch.topk(flat_window, k=min(keep_per_window, len(flat_window)))
-                
+
                 for local_idx in local_indices:
                     local_row = local_idx // window_w
                     local_col = local_idx % window_w
@@ -1905,8 +1905,8 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
                     global_col = col_start + local_col
                     global_idx = global_row * img_w + global_col
                     selected_indices.append(global_idx.item())
-        
-        # 处理边界窗口
+
+        # Process boundary windows
         selected_indices.extend(
             self._handle_boundary_windows(
                 attention_scores_2d, img_h, img_w,
@@ -1915,8 +1915,8 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
                 keep_ratio, device
             )
         )
-        
-        print(f"    窗口: {window_h}x{window_w}, 保留 {len(selected_indices)}/{img_h*img_w}")
+
+        print(f"    Window: {window_h}x{window_w}, Keep {len(selected_indices)}/{img_h*img_w}")
         
         return selected_indices
 
@@ -1929,26 +1929,26 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
         window_h, window_w,
         keep_ratio, device
     ):
-        """处理边界不完整窗口"""
+        """Handle incomplete boundary windows"""
         selected_indices = []
-        
+
         has_remaining_h = (img_h % window_h) != 0
         has_remaining_w = (img_w % window_w) != 0
-        
-        # 右边界
+
+        # Right boundary
         if has_remaining_w:
             col_start = num_windows_w * window_w
             remaining_w = img_w - col_start
-            
+
             for i in range(num_windows_h):
                 row_start = i * window_h
                 row_end = (i + 1) * window_h
-                
+
                 window_scores = attention_scores_2d[row_start:row_end, col_start:]
                 flat_window = window_scores.flatten()
                 keep_remaining = max(1, round(len(flat_window) * keep_ratio))
                 _, local_indices = torch.topk(flat_window, k=min(keep_remaining, len(flat_window)))
-                
+
                 for local_idx in local_indices:
                     local_row = local_idx // remaining_w
                     local_col = local_idx % remaining_w
@@ -1956,20 +1956,20 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
                     global_col = col_start + local_col
                     global_idx = global_row * img_w + global_col
                     selected_indices.append(global_idx.item())
-        
-        # 底边界
+
+        # Bottom boundary
         if has_remaining_h:
             row_start = num_windows_h * window_h
-            
+
             for j in range(num_windows_w):
                 col_start = j * window_w
                 col_end = (j + 1) * window_w
-                
+
                 window_scores = attention_scores_2d[row_start:, col_start:col_end]
                 flat_window = window_scores.flatten()
                 keep_remaining = max(1, round(len(flat_window) * keep_ratio))
                 _, local_indices = torch.topk(flat_window, k=min(keep_remaining, len(flat_window)))
-                
+
                 for local_idx in local_indices:
                     local_row = local_idx // window_w
                     local_col = local_idx % window_w
@@ -1977,17 +1977,17 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
                     global_col = col_start + local_col
                     global_idx = global_row * img_w + global_col
                     selected_indices.append(global_idx.item())
-        
-        # 右下角
+
+        # Bottom-right corner
         if has_remaining_h and has_remaining_w:
             row_start = num_windows_h * window_h
             col_start = num_windows_w * window_w
-            
+
             window_scores = attention_scores_2d[row_start:, col_start:]
             flat_window = window_scores.flatten()
             keep_remaining = max(1, round(len(flat_window) * keep_ratio))
             _, local_indices = torch.topk(flat_window, k=min(keep_remaining, len(flat_window)))
-            
+
             remaining_w = img_w - col_start
             for local_idx in local_indices:
                 local_row = local_idx // remaining_w
@@ -1996,12 +1996,12 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
                 global_col = col_start + local_col
                 global_idx = global_row * img_w + global_col
                 selected_indices.append(global_idx.item())
-        
+
         return selected_indices
 
 
     def _find_best_divisor(self, dimension, target, min_val, max_val):
-        """找到最接近target且能整除dimension的数"""
+        """Find the number closest to target that divides dimension evenly"""
         candidates = []
         for size in range(min_val, max_val + 1):
             if dimension % size == 0:
@@ -2016,19 +2016,19 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
 
     def prune_past_key_values(self, past_key_values, keep_indexs, current_layer_idx):
         """
-        剪枝past_key_values中所有层的kv cache
-        
+        Prune kv cache for all layers in past_key_values.
+
         Args:
-            past_key_values: 当前的kv cache
-            keep_indexs: 需要保留的token索引
-            current_layer_idx: 当前层索引
+            past_key_values: Current kv cache.
+            keep_indexs: Token indices to keep.
+            current_layer_idx: Current layer index.
         """
 
         if isinstance(past_key_values, DynamicCache):
-            # 处理DynamicCache类型
+            # Handle DynamicCache type
             for layer_idx in range(len(past_key_values.key_cache)):
                 if layer_idx < current_layer_idx and layer_idx > 0:
-                    # 对于已经计算过的层，直接剪枝kv cache
+                    # For already computed layers, prune kv cache directly
                     if past_key_values.key_cache[layer_idx] is not None:
                         # print("past_key_values.key_cache[layer_idx]", layer_idx, past_key_values.key_cache[layer_idx].shape)
 
@@ -2038,60 +2038,60 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
                     if past_key_values.value_cache[layer_idx] is not None:
                         past_key_values.value_cache[layer_idx] = past_key_values.value_cache[layer_idx][:, :, keep_indexs, :]
 
-            # 更新sequence length
+            # Update sequence length
             if hasattr(past_key_values, '_seen_tokens'):
                 past_key_values._seen_tokens = len(keep_indexs)
         else:
-            # 处理传统的tuple格式的past_key_values
+            # Handle traditional tuple format of past_key_values
             new_past_key_values = []
             for layer_idx, (key_states, value_states) in enumerate(past_key_values):
                 if layer_idx < current_layer_idx and layer_idx > 0:
-                    # 剪枝已计算层的kv cache
+                    # Prune kv cache for computed layers
                     pruned_key_states = key_states[:, :, keep_indexs, :]
                     pruned_value_states = value_states[:, :, keep_indexs, :]
                     new_past_key_values.append((pruned_key_states, pruned_value_states))
                 else:
-                    # 未计算的层保持原样
+                    # Keep uncomputed layers unchanged
                     new_past_key_values.append((key_states, value_states))
-            
-            # 替换原来的past_key_values
+
+            # Replace original past_key_values
             past_key_values.clear()
             past_key_values.extend(new_past_key_values)
 
 
 
     def calculate_avg_similarity_for_subset_einsum(
-        self, 
-        value_states: torch.Tensor, 
+        self,
+        value_states: torch.Tensor,
         query_token_indices: torch.LongTensor,
         head_dim: int,
         img_start: Optional[int] = None,
         img_len: Optional[int] = None
     ) -> torch.Tensor:
         """
-        高效地计算一个 "query" token 子集 与所有 token 之间的 value 相似度得分，并返回平均得分向量。
-        这避免了计算完整的 (S, S) 矩阵，从而节省大量显存。
+        Efficiently compute value similarity scores between a subset of "query" tokens and all tokens,
+        returning an averaged score vector. This avoids computing the full (S, S) matrix, saving significant memory.
 
         Args:
-            value_states (torch.Tensor): 完整的 value 张量，形状为 (B, H, S, D)。
-            query_token_indices (torch.LongTensor): 作为 "query" 的 token 的索引。
-            head_dim (int): 注意力头的维度。
+            value_states (torch.Tensor): Full value tensor, shape (B, H, S, D).
+            query_token_indices (torch.LongTensor): Indices of tokens to use as "query".
+            head_dim (int): Attention head dimension.
 
         Returns:
-            torch.Tensor: 平均后的相似度得分向量，形状为 (S,)。
+            torch.Tensor: Averaged similarity score vector, shape (S,).
         """
-        # 假设 batch_size = 1，这在推理中很常见
+        # Assume batch_size = 1, which is common in inference
         if value_states.shape[0] != 1:
             raise NotImplementedError("This efficient implementation currently supports batch_size=1")
 
-        #TODO 用flashattention不注释，不用就得注释
-        # value_states = value_states.transpose(1, 2) 
-        # 1. 从 value_states 中提取出对应 "query" 子集的部分
+        # TODO: Uncomment when using flash attention, comment out otherwise
+        # value_states = value_states.transpose(1, 2)
+        # 1. Extract the subset corresponding to "query" from value_states
         value_states_query = value_states[:, :, query_token_indices, :]
 
-        # 2. 准备完整的 value_states 用于矩阵乘法 (转置)
+        # 2. Prepare full value_states for matrix multiplication (transpose)
         value_states_t = value_states[:, :, img_start : img_start+210, : ].transpose(2, 3)
-        # 3. 计算 "query" tokens 和所有 tokens 的相似度矩阵 (形状: B, H, S_query, S_all)
+        # 3. Compute similarity matrix between "query" tokens and all tokens (shape: B, H, S_query, S_all)
 
         scale = math.sqrt(head_dim)
 
@@ -2102,12 +2102,12 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
 
         # sim_slice = torch.matmul(value_states_query, value_states_t) / scale
 
-        # 4. 对这个小得多的矩阵进行 softmax
+        # 4. Apply softmax to this much smaller matrix
         weights_slice = nn.functional.softmax(sim_slice, dim=-1, dtype=torch.float32).to(value_states.dtype)
 
-        # 5. 按照你的原始逻辑，先在 head 维度上求平均，再在 query token 维度上求平均
-        # weights_slice 的形状是 (1, H, S_query, S_all)
-        # 平均后得到 (S_all,)
+        # 5. According to original logic, average over head dimension first, then over query token dimension
+        # weights_slice has shape (1, H, S_query, S_all)
+        # After averaging, we get (S_all,)
         final_score_vector = torch.mean(weights_slice, dim=(0, 1))
         return final_score_vector
 
@@ -2295,7 +2295,7 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
                         img_scores_final_mean = torch.mean(img_scores_final, dim=0)
                         valid_attention = img_scores_final_mean[valid_mask]
 
-                        # --- 先计算 cos/sin indices，以便动态确定前景 token 数量 ---
+                        # --- First compute cos/sin indices to dynamically determine foreground token count ---
                         cos_mean = torch.mean(cos, dim=1)
                         sin_mean = torch.mean(sin, dim=1)
 
@@ -2337,22 +2337,22 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
                         original_line_cos_top_indices = original_line_cos_top_indices.reshape(-1)
                         original_line_sin_top_indices = original_line_sin_top_indices.reshape(-1)
 
-                        # 只统计全局缩略图（210 tokens）中 cos+sin 已选的不重复 token 数
-                        # 前景选取的范围也是这 210 tokens，因此 budget 应在同一空间内计算
+                        # Only count unique tokens selected by cos+sin in the global thumbnail (210 tokens)
+                        # Foreground selection range is also these 210 tokens, so budget should be calculated within the same space
                         global_cos_sin_unique = torch.unique(torch.cat([
                             global_cos_top_indices,
                             global_sin_top_indices,
                         ]))
                         n_global_cos_sin = global_cos_sin_unique.numel()
 
-                        # 全局前景 token + 全局 cos + 全局 sin ≈ 50% × 210
+                        # Global foreground tokens + global cos + global sin ≈ 50% × 210
                         thumbnail_target = round(210 * 0.5)
                         k = max(1, thumbnail_target - n_global_cos_sin)
 
-                        # 按 value attention 分数降序排序，得到 valid_attention 的下标排列
+                        # Sort by value attention scores in descending order to get index permutation of valid_attention
                         sorted_local_indices = valid_attention.argsort(descending=True)
-                        # valid_indices 是相对于全局图（0-209）的局部坐标
-                        # 排除已被全局 cos/sin 覆盖的 token，避免重复计入 budget
+                        # valid_indices are local coordinates relative to the global map (0-209)
+                        # Exclude tokens already covered by global cos/sin to avoid double counting in budget
                         sorted_valid_local = valid_indices[sorted_local_indices]
                         not_in_cos_sin_mask = ~torch.isin(sorted_valid_local, global_cos_sin_unique)
                         remaining_sorted_indices = sorted_local_indices[not_in_cos_sin_mask]
@@ -2403,7 +2403,7 @@ class DeepseekV2Model(DeepseekV2PreTrainedModel):
                             use_cache=use_cache,
                         )
 
-                        # past_key_values.seen_tokens = seq_length_with_past  # tiny 注释了 TODO
+                        # past_key_values.seen_tokens = seq_length_with_past  # tiny commented out TODO
                         seq_length_with_past = len(keep_indexs)
 
                         self.prune_past_key_values(past_key_values, keep_indexs, layer_idx)
@@ -2521,10 +2521,10 @@ class DeepseekV2ForCausalLM(DeepseekV2PreTrainedModel):
 
     def get_image_token_length(self, input_ids):
         """
-        输入参数:
-            input_ids: (batch_size, seq_len) 的token序列
-        返回:
-            image_token_lengths: 每个样本中图像token的长度列表
+        Input parameters:
+            input_ids: (batch_size, seq_len) token sequence
+        Returns:
+            image_token_lengths: List of image token lengths for each sample
         """
         start_token = 151652  # vision_start_token_id
         end_token = 151653    # vision_end_token_id
@@ -2533,12 +2533,12 @@ class DeepseekV2ForCausalLM(DeepseekV2PreTrainedModel):
         image_token_lengths = []
         image_start_indices = []
         for seq in input_ids:
-            # 找到所有start和end的位置
+            # Find all start and end positions
 
             start_indices = (seq == start_token).nonzero(as_tuple=True)[0]
             end_indices = (seq == end_token).nonzero(as_tuple=True)[0]
 
-            # 配对的start-end位置之间的长度即为图像token长度
+            # The length between paired start-end positions is the image token length
             image_length = sum(end - start - 1 for start, end in zip(start_indices, end_indices))
             image_token_lengths.append(image_length)
             if len(start_indices) == 0:

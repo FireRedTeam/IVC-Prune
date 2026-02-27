@@ -10,28 +10,28 @@ import re
 
 def extract_and_normalize_coordinates(box_string):
     """
-    从InternVL模型返回的坐标字符串中提取坐标并归一化到[0,1]范围
-    
-    参数:
-        box_string: 包含坐标的字符串，如'[123,456,789,012]' 或 '[[123,456,789,012]]'
-        
-    返回:
-        归一化后的坐标列表：[x1_norm, y1_norm, x2_norm, y2_norm]
-        如果未找到坐标，则返回[0, 0, 0, 0]
+    Extract coordinates from the coordinate string returned by InternVL model and normalize to [0,1] range.
+
+    Parameters:
+        box_string: String containing coordinates, e.g., '[123,456,789,012]' or '[[123,456,789,012]]'
+
+    Returns:
+        List of normalized coordinates: [x1_norm, y1_norm, x2_norm, y2_norm]
+        Returns [0, 0, 0, 0] if no coordinates are found.
     """
-    # 使用正则表达式提取坐标（参考原代码的PATTERN）
+    # Use regular expression to extract coordinates (referencing the original PATTERN)
     pattern = r'\[*\[(.*?),(.*?),(.*?),(.*?)\]\]*'
     match = re.search(pattern, box_string)
-    
+
     if match:
         try:
-            # 提取坐标值
+            # Extract coordinate values
             x1, y1, x2, y2 = map(float, match.groups())
-            
-            # 构建坐标元组用于判断是否需要归一化
+
+            # Build coordinate tuple to determine if normalization is needed
             coords_sum = x1 + y1 + x2 + y2
-            
-            # 如果坐标值较大（sum >= 4），则除以1000进行归一化
+
+            # If coordinate values are large (sum >= 4), divide by 1000 to normalize
             if coords_sum >= 4:
                 x1_norm = x1 / 1000.0
                 y1_norm = y1 / 1000.0
@@ -42,7 +42,7 @@ def extract_and_normalize_coordinates(box_string):
                 y1_norm = y1
                 x2_norm = x2
                 y2_norm = y2
-            
+
             return [x1_norm, y1_norm, x2_norm, y2_norm]
         except:
             return [0, 0, 0, 0]
@@ -52,158 +52,152 @@ def extract_and_normalize_coordinates(box_string):
 
 def bbox_to_tokens_vas(bbox, orig_width, orig_height, target_aspect_ratio, image_size=448, use_thumbnail=True):
     """
-    将原图上的bbox转换为对应的token索引 (基于pad处理)
-    
+    Convert bbox on original image to corresponding token indices (based on pad processing).
+
     Args:
-        bbox: (x1, y1, x2, y2) 原图上的bbox坐标
-        orig_width, orig_height: 原图尺寸
-        target_aspect_ratio: (rows, cols) 切分的网格比例
-        image_size: 每个block的尺寸
-        use_thumbnail: 是否使用thumbnail
-    
+        bbox: (x1, y1, x2, y2) bbox coordinates on original image
+        orig_width, orig_height: Original image dimensions
+        target_aspect_ratio: (rows, cols) Grid split ratio
+        image_size: Size of each block
+        use_thumbnail: Whether to use thumbnail
+
     Returns:
-        token_info: 包含每个相关block的token信息
+        token_info: Token information for each relevant block
     """
     x1, y1, x2, y2 = bbox
     all_token_positions = []
-    
-    # token布局参数 (假设patch_size=32, downsample_ratio=2)
+
+    # Token layout parameters (assuming patch_size=32, downsample_ratio=2)
     h = w = 14  # math.ceil((image_size // patch_size) / downsample_ratio)
-    
+
     # Global view: h * (w + 1) tokens
     global_tokens = h * (w + 1)
-    
-    # 分隔符: 1 token
+
+    # Separator: 1 token
     separator_tokens = 1
-    
+
     # Local views dimensions
-    num_height_tiles = target_aspect_ratio[1]  # 行数
-    num_width_tiles = target_aspect_ratio[0]   # 列数
-    
-    # 1. 处理局部视图blocks中的bbox tokens
-    # 计算pad后的目标尺寸
-    target_width = image_size * target_aspect_ratio[0]  # 例如：448 * 2 = 896
-    target_height = image_size * target_aspect_ratio[1]  # 例如：448 * 1 = 448
-    
-    # 计算pad的缩放比例和偏移
+    num_height_tiles = target_aspect_ratio[1]  # Number of rows
+    num_width_tiles = target_aspect_ratio[0]   # Number of columns
+
+    # 1. Process bbox tokens in local view blocks
+    # Calculate target dimensions after padding
+    target_width = image_size * target_aspect_ratio[0]  # e.g., 448 * 2 = 896
+    target_height = image_size * target_aspect_ratio[1]  # e.g., 448 * 1 = 448
+
+    # Calculate pad scaling ratio and offset
     scale = min(target_width / orig_width, target_height / orig_height)
-    
-    # 缩放后的实际图像尺寸
+
+    # Actual image dimensions after scaling
     scaled_width = orig_width * scale
     scaled_height = orig_height * scale
-    
-    # 计算居中pad的偏移量
+
+    # Calculate centering pad offsets
     pad_left = (target_width - scaled_width) / 2
     pad_top = (target_height - scaled_height) / 2
-    
-    # 将bbox坐标从原图坐标系转换到pad后的坐标系
+
+    # Convert bbox coordinates from original image coordinate system to padded coordinate system
     padded_x1 = x1 * scale + pad_left
     padded_y1 = y1 * scale + pad_top
     padded_x2 = x2 * scale + pad_left
     padded_y2 = y2 * scale + pad_top
-    
-    # 确定bbox涉及的block范围
+
+    # Determine block range involved by bbox
     block_x1 = int(padded_x1 // image_size)
     block_y1 = int(padded_y1 // image_size)
     block_x2 = int(padded_x2 // image_size)
     block_y2 = int(padded_y2 // image_size)
-    
-    # 确保不超出边界
+
+    # Ensure not exceeding boundaries
     block_x1 = max(0, min(block_x1, target_aspect_ratio[0] - 1))
     block_y1 = max(0, min(block_y1, target_aspect_ratio[1] - 1))
     block_x2 = max(0, min(block_x2, target_aspect_ratio[0] - 1))
     block_y2 = max(0, min(block_y2, target_aspect_ratio[1] - 1))
 
-    # 遍历涉及的每个block
+    # Iterate through each involved block
     for block_y in range(block_y1, block_y2 + 1):
         for block_x in range(block_x1, block_x2 + 1):
-            # 计算block在pad后图像中的边界
+            # Calculate block boundaries in padded image
             block_left = block_x * image_size
             block_top = block_y * image_size
-            
-            # bbox在当前block内的坐标
+
+            # Coordinates of bbox within current block
             bbox_in_block_x1 = max(0, padded_x1 - block_left)
             bbox_in_block_y1 = max(0, padded_y1 - block_top)
             bbox_in_block_x2 = min(image_size, padded_x2 - block_left)
             bbox_in_block_y2 = min(image_size, padded_y2 - block_top)
-            
-            # 转换为14x14 token坐标
+
+            # Convert to 14x14 token coordinates
             token_scale = 14.0 / image_size
-            
+
             token_x1 = int(bbox_in_block_x1 * token_scale)
             token_y1 = int(bbox_in_block_y1 * token_scale)
             token_x2 = int(bbox_in_block_x2 * token_scale)
             token_y2 = int(bbox_in_block_y2 * token_scale)
-            
-            # 确保在14x14范围内
+
+            # Ensure within 14x14 range
             token_x1 = max(0, min(token_x1, 13))
             token_y1 = max(0, min(token_y1, 13))
             token_x2 = max(0, min(token_x2, 13))
             token_y2 = max(0, min(token_y2, 13))
-            
-            # 获取涉及的token索引
+
+            # Get involved token indices
             for ty in range(token_y1, token_y2 + 1):
                 for tx in range(token_x1, token_x2 + 1):
-                    # 计算在local views中的索引
-                    # Local views排列：(num_height_tiles * h) 行 x (num_width_tiles * w + 1) 列
-                    # 每行包含所有tile在该行的tokens + 1个行分隔符
+                    # Calculate index in local views
+                    # Local views layout: (num_height_tiles * h) rows x (num_width_tiles * w + 1) columns
+                    # Each row contains tokens of all tiles in that row + 1 row separator
                     local_row = block_y * h + ty
                     local_col = block_x * w + tx
-                    
-                    # 在local views中的索引
+
+                    # Index in local views
                     local_index = local_row * (num_width_tiles * w + 1) + local_col
-                    
-                    # 在全局sequence中的索引
+
+                    # Index in global sequence
                     global_token_idx = global_tokens + separator_tokens + local_index
                     all_token_positions.append(global_token_idx)
 
-    # 2. 如果使用thumbnail，计算bbox在thumbnail中的token位置
+    # 2. If using thumbnail, calculate bbox token positions in thumbnail
     if use_thumbnail:
-        # thumbnail是整个原图pad到image_size x image_size
+        # Thumbnail is the entire original image padded to image_size x image_size
         thumb_scale = min(image_size / orig_width, image_size / orig_height)
-        
-        # 缩放后的尺寸
+
+        # Dimensions after scaling
         thumb_scaled_width = orig_width * thumb_scale
         thumb_scaled_height = orig_height * thumb_scale
-        
-        # 计算居中pad的偏移量
+
+        # Calculate centering pad offsets
         thumb_pad_left = (image_size - thumb_scaled_width) / 2
         thumb_pad_top = (image_size - thumb_scaled_height) / 2
-        
-        # bbox在thumbnail中的坐标
+
+        # Coordinates of bbox in thumbnail
         thumb_x1 = x1 * thumb_scale + thumb_pad_left
         thumb_y1 = y1 * thumb_scale + thumb_pad_top
         thumb_x2 = x2 * thumb_scale + thumb_pad_left
         thumb_y2 = y2 * thumb_scale + thumb_pad_top
-        
-        # 转换为14x14 token坐标
+
+        # Convert to 14x14 token coordinates
         token_scale = 14.0 / image_size
-        
+
         thumb_token_x1 = int(thumb_x1 * token_scale)
         thumb_token_y1 = int(thumb_y1 * token_scale)
         thumb_token_x2 = int(thumb_x2 * token_scale)
         thumb_token_y2 = int(thumb_y2 * token_scale)
-        
-        # 确保在14x14范围内
+
+        # Ensure within 14x14 range
         thumb_token_x1 = max(0, min(thumb_token_x1, 13))
         thumb_token_y1 = max(0, min(thumb_token_y1, 13))
         thumb_token_x2 = max(0, min(thumb_token_x2, 13))
         thumb_token_y2 = max(0, min(thumb_token_y2, 13))
-        
-        # 获取thumbnail中涉及的token索引 (global view部分)
+
+        # Get involved token indices in thumbnail (global view part)
         for ty in range(thumb_token_y1, thumb_token_y2 + 1):
             for tx in range(thumb_token_x1, thumb_token_x2 + 1):
-                # Global view: h行 x (w+1)列，每行有w个token + 1个行分隔符
+                # Global view: h rows x (w+1) columns, each row has w tokens + 1 row separator
                 token_idx = ty * (w + 1) + tx
                 all_token_positions.append(token_idx)
 
         all_token_positions.append(210)
-
-        # for i in range(14):
-        #     token_idx = i * 15 + 14 
-        #     all_token_positions.append(token_idx)
-        # all_token_positions.append(210)
-
 
 
     local_heights = num_height_tiles * 14
@@ -380,8 +374,7 @@ class DeepSeekVL2IVCP(BaseModel):
         conversation, bbox = self.prepare_inputs(message, dataset)
         from deepseek_vl2.utils.io import load_pil_images
         pil_images = load_pil_images(conversation)
-        # print(conversation)
-        # print("message", message)
+
         if dataset == 'MMMU_DEV_VAL':
             if len(pil_images):
                 h, w = pil_images[0].size
@@ -396,11 +389,7 @@ class DeepSeekVL2IVCP(BaseModel):
             system_prompt=""
         )
         all_token_positions = None
-        if dataset in {"RefCOCO_testA_foreground_deepseek", "RefCOCO_val_foreground_deepseek" ,"RefCOCO_testB_foreground_deepseek", "RefCOCO+_testA_foreground_deepseek", "RefCOCO+_testB_foreground_deepseek", "RefCOCO+_val_foreground_deepseek", "RefCOCOg_test_foreground_deepseek", "RefCOCOg_val_foreground_deepseek", "debug_foreground_deepseek"}:
-            width = pil_images[0].width
-            height = pil_images[0].height
-            all_token_positions = bbox_to_tokens_vas(bbox, width, height, prepare_inputs['images_spatial_crop'].squeeze().tolist())
-        # print("prepare_inputs", prepare_inputs)
+
         prepare_inputs = prepare_inputs.to(self.model.device)
 
 
@@ -470,16 +459,7 @@ class DeepSeekVL2IVCP(BaseModel):
         else:
             msgs = [dict(type='image', value=tgt_path)]
 
-        if dataset in {"RefCOCO_testA_foreground_deepseek", "RefCOCO_val_foregrou33nd_deepseek" ,"RefCOCO_testB_foreground_deepseek", "RefCOCO+_testA_foreground_deepseek", "RefCOCO+_testB_foreground_deepseek", "RefCOCO+_val_foreground_deepseek", "RefCOCOg_test_foreground_deepseek", "RefCOCOg_val_foreground_deepseek", "debug_foreground_deepseek"}:
-            answer = line['answer']
-            gt = np.array(answer.split(' '), dtype=float)
-            msgs.append(dict(type='text', value=question+ '@#@' + answer))
 
-            # msgs['text'].append(gt)
-            # msgs.append(dict(type='bbox', value=answer))
-            return msgs
+        msgs.append(dict(type='text', value=question))
 
-        else:
-            msgs.append(dict(type='text', value=question))
-
-            return msgs
+        return msgs

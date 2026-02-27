@@ -81,10 +81,10 @@ class MlpProjector(nn.Module):
             # import ipdb; ipdb.set_trace()
             patches = x.unfold(2, 2, 2).unfold(3, 2, 2)
             batch_size, channels, h_patches, w_patches, _, _ = patches.size()
-            # 在通道维度上拼接
+            # Concatenate along channel dimension
             patches = patches.contiguous().view(batch_size, channels, h_patches * w_patches, -1)
 
-            # 通过线性层
+            # Pass through linear layer
             patches = patches.permute(0, 2, 1, 3).contiguous()
             patches = patches.view(batch_size, h_patches * w_patches, channels * 4)
 
@@ -305,17 +305,18 @@ class DeepseekVLV2ForCausalLM(DeepseekVLV2PreTrainedModel):
         projector_config = config.projector_config
         self.projector = MlpProjector(projector_config)
 
-        # image token format 形式
-        # FIXME 目前tile tag & global_view_pos的默认取值都是之前的实验策略；后续应当去掉默认取值，改为没有取值就raise error
+        # image token format
+        # FIXME: Currently the default values of tile_tag & global_view_pos are from previous experimental strategies;
+        # In the future, default values should be removed and raise error if no value is provided.
         self.tile_tag = config.tile_tag
         self.global_view_pos = config.global_view_pos
 
-        # 用于format image token sequence的特殊token
+        # Special tokens for formatting image token sequence
         embed_std = 1 / torch.sqrt(torch.tensor(projector_config.n_embed, dtype=torch.float32))
         if self.tile_tag == "2D":
-            # <|view_separator|>, <|\n|> 每一个图像行的末尾添加一个换行符
+            # <|view_separator|>, <|\n|> Add a newline at the end of each image row
             self.image_newline = nn.Parameter(torch.randn(projector_config.n_embed) * embed_std)
-            # fix the typo: view_seperater  全局特征和局部特征的分界token
+            # fix the typo: view_seperater  Token separating global and local features
             self.view_seperator = nn.Parameter(torch.randn(projector_config.n_embed) * embed_std)
         elif self.tile_tag == "1D":
             # <|tile_x|>, <|tile_global|>
@@ -338,32 +339,32 @@ class DeepseekVLV2ForCausalLM(DeepseekVLV2PreTrainedModel):
 
     def find_single_image_token_span(self, input_ids):
         """
-        找到单个连续image token序列的起始位置和长度
+        Find the start position and length of a single continuous image token sequence.
         """
 
         image_token_id=100003  # small
         # image_token_id = 128815  # tiny
 
-        # 假设input_ids是2D tensor [batch_size, seq_len]
-        sequence = input_ids[0]  # 取第一个batch
+        # Assume input_ids is a 2D tensor [batch_size, seq_len]
+        sequence = input_ids[0]  # Take the first batch
 
         torch.set_printoptions(threshold=float('inf'))
-        # 找到第一个image token的位置
+        # Find the position of the first image token
         image_positions = torch.where(sequence == image_token_id)[0]
-        
+
         if len(image_positions) == 0:
             return None, 0
-        
+
         start_pos = image_positions[0].item()
-        
-        # 计算连续的长度
+
+        # Calculate the continuous length
         length = 0
         for i in range(start_pos, len(sequence)):
             if sequence[i] == image_token_id:
                 length += 1
             else:
                 break
-        
+
         return start_pos, length
 
     def get_special_token_positions(
@@ -374,79 +375,79 @@ class DeepseekVLV2ForCausalLM(DeepseekVLV2PreTrainedModel):
         hw
     ):
         """
-        获取image_newline和view_seperator在input_embeds中的位置
+        Get positions of image_newline and view_seperator in input_embeds.
         """
         bs, max_n_images, _ = images_spatial_crop.shape
-        
+
         result = {
             'image_newline_positions': [[] for _ in range(bs)],
             'view_seperator_positions': [[] for _ in range(bs)]
         }
-        
+
         h = w = int(hw ** 0.5)  # h=w=14
-        
+
         for idx in range(bs):
-            # 找到当前batch中图像token的起始位置
+            # Find the start position of image tokens in current batch
             image_mask_indices = torch.where(images_seq_mask[idx])[0]
             if len(image_mask_indices) == 0:
                 continue
-                
-            # 转换为int，确保类型一致
+
+            # Convert to int to ensure type consistency
             image_start_pos = int(image_mask_indices[0].item())
             current_pos = image_start_pos
-            
+
             for jdx in range(max_n_images):
-                # 确保转换为int
+                # Ensure conversion to int
                 num_width_tiles = int(images_spatial_crop[idx, jdx, 0].item())
                 num_height_tiles = int(images_spatial_crop[idx, jdx, 1].item())
-                
+
                 if num_width_tiles == 0 or num_height_tiles == 0:
                     break
-                    
+
                 if self.tile_tag == "2D":
-                    # ----------------- 全局视图的newline位置 -----------------
+                    # ----------------- Global view newline positions -----------------
                     # global_features shape: [h * (w + 1), D]
-                    # newline在每行的最后一个位置: w, 2w+1, 3w+2, ..., h*w+(h-1)
+                    # newline at the last position of each row: w, 2w+1, 3w+2, ..., h*w+(h-1)
                     global_newline_positions = []
                     for row in range(h):
-                        # 每行的newline位置 = 行起始位置 + w
+                        # Newline position for each row = row start position + w
                         newline_pos = current_pos + row * (w + 1) + w
                         global_newline_positions.append(newline_pos)
-                    
+
                     result['image_newline_positions'][idx].extend(global_newline_positions)
-                    
-                    # 更新位置：全局特征总长度 = h * (w + 1)
+
+                    # Update position: total length of global features = h * (w + 1)
                     current_pos += h * (w + 1)
-                    
-                    # ----------------- view_seperator位置 -----------------
+
+                    # ----------------- view_seperator positions -----------------
                     if self.global_view_pos == "head":
-                        # separator在全局视图之后，局部视图之前
+                        # separator is after global view and before local view
                         separator_pos = current_pos
                         result['view_seperator_positions'][idx].append(separator_pos)
-                        current_pos += 1  # separator占1个位置
-                    
-                    # ----------------- 局部视图的newline位置 -----------------
+                        current_pos += 1  # separator occupies 1 position
+
+                    # ----------------- Local view newline positions -----------------
                     # local_features shape: [(num_height_tiles * h) * (num_width_tiles * w + 1), D]
                     local_newline_positions = []
                     total_local_rows = num_height_tiles * h
                     total_local_cols = num_width_tiles * w + 1
-                    
+
                     for row in range(total_local_rows):
-                        # 每行的newline位置在最后一列
+                        # Newline position for each row is in the last column
                         newline_pos = current_pos + row * total_local_cols + (total_local_cols - 1)
                         local_newline_positions.append(newline_pos)
-                    
+
                     result['image_newline_positions'][idx].extend(local_newline_positions)
-                    
-                    # 更新位置：局部特征总长度
+
+                    # Update position: total length of local features
                     current_pos += total_local_rows * total_local_cols
-                    
+
                     if self.global_view_pos != "head":
-                        # separator在局部视图之后，全局视图之前
+                        # separator is after local view and before global view
                         separator_pos = current_pos
                         result['view_seperator_positions'][idx].append(separator_pos)
                         current_pos += 1
-        
+
         return result
 
 
@@ -457,28 +458,28 @@ class DeepseekVLV2ForCausalLM(DeepseekVLV2PreTrainedModel):
         images_seq_mask: torch.BoolTensor
     ):
         """
-        获取特殊token在每个图像内部的相对位置
-        
+        Get relative positions of special tokens within each image.
+
         Returns:
-            dict: 包含每个图像内部的相对位置信息
+            dict: Contains relative position information within each image.
         """
         bs, max_n_images, _ = images_spatial_crop.shape
-        
+
         result = {
-            'images_info': [[] for _ in range(bs)]  # 每个batch的图像信息
+            'images_info': [[] for _ in range(bs)]  # Image information for each batch
         }
-        
+
         for idx in range(bs):
             image_start_pos = 0
-            
+
             for jdx in range(max_n_images):
                 num_width_tiles, num_height_tiles = images_spatial_crop[idx, jdx]
                 if num_width_tiles == 0 or num_height_tiles == 0:
                     break
-                    
-                hw = 196  # 根据实际vision model调整
+
+                hw = 196  # Adjust according to actual vision model
                 h = w = int(hw ** 0.5)
-                
+
                 image_info = {
                     'image_idx': jdx,
                     'global_newline_relative_pos': [],
@@ -486,52 +487,51 @@ class DeepseekVLV2ForCausalLM(DeepseekVLV2PreTrainedModel):
                     'separator_relative_pos': None,
                     'total_length': 0
                 }
-                
+
                 current_relative_pos = 0
-                
+
                 if self.tile_tag == "2D":
-                    # 全局视图newline相对位置
+                    # Global view newline relative positions
                     for row in range(h):
                         rel_pos = current_relative_pos + row * (w + 1) + w
                         image_info['global_newline_relative_pos'].append(rel_pos)
-                    
+
                     current_relative_pos += h * (w + 1)
-                    
-                    # Separator位置
+
+                    # Separator position
                     if self.global_view_pos == "head":
                         image_info['separator_relative_pos'] = current_relative_pos
                         current_relative_pos += 1
-                    
-                    # 局部视图newline相对位置
+
+                    # Local view newline relative positions
                     total_local_rows = num_height_tiles * h
                     total_local_cols = num_width_tiles * w + 1
-                    
+
                     for row in range(total_local_rows):
                         rel_pos = current_relative_pos + row * total_local_cols + (total_local_cols - 1)
                         image_info['local_newline_relative_pos'].append(rel_pos)
-                    
+
                     current_relative_pos += total_local_rows * total_local_cols
-                    
+
                     if self.global_view_pos != "head":
                         image_info['separator_relative_pos'] = current_relative_pos
                         current_relative_pos += 1
-                    
+
                     image_info['total_length'] = current_relative_pos
-                
+
                 result['images_info'][idx].append(image_info)
-        
+
         return result
 
-    # 使用示例
     def analyze_special_tokens(self, input_ids, hw , images, images_seq_mask, images_spatial_crop):
         """
-        完整分析特殊token位置的函数
+        Complete function for analyzing special token positions.
         """
-        # 获取绝对位置
+        # Get absolute positions
         absolute_positions = self.get_special_token_positions(
             input_ids, images_spatial_crop, images_seq_mask, hw
         )
-        
+
         return absolute_positions
 
 
@@ -556,12 +556,12 @@ class DeepseekVLV2ForCausalLM(DeepseekVLV2PreTrainedModel):
             input_embeds (torch.Tensor): [b, T, D]
         """
 
-        # # 如果没有图像时直接返回文本embedding
+        # # Return text embedding directly if no images
         if images is None or images_spatial_crop.sum() == 0:
             return self.language.get_input_embeddings()(input_ids)
 
-        # 图像分块信息统计，每个图像包括 1个全局视图，N个局部视图
-        # 总块数  1+  num_width_tiles * num_height_tiles
+        # Image tile information statistics, each image includes 1 global view and N local views
+        # Total tiles: 1 + num_width_tiles * num_height_tiles
         bs, max_n_images, _ = images_spatial_crop.shape
         batch_num_tiles = [0 for _ in range(bs)]
         total_tiles = []
@@ -574,24 +574,27 @@ class DeepseekVLV2ForCausalLM(DeepseekVLV2PreTrainedModel):
                 batch_num_tiles[idx] += (1 + num_width_tiles * num_height_tiles)
             total_tiles.append(images[idx, :batch_num_tiles[idx]])
         # [batch_all_tiles, 3, height, width]
-        # 视觉特征提取
-        total_tiles = torch.cat(total_tiles, dim=0) # 合并所有图像块
+        # Visual feature extraction
+        total_tiles = torch.cat(total_tiles, dim=0)  # Merge all image tiles
 
         assert total_tiles.shape[0] == sum(batch_num_tiles)
         if total_tiles.shape[0] == 0:
             return self.language.get_input_embeddings()(input_ids)
 
         # [batch_all_tiles, vit_seq_len, c]
-        images_feature = self.vision(total_tiles)  # 视觉编码器处理
+        images_feature = self.vision(total_tiles)  # Process with vision encoder
 
         # [batch_all_tiles, hw, D]
-        images_embeds = self.projector(images_feature)  # 投影到语言模型维度 这个地方，从[3, 729, 1152]到[3, 196, 2048] 不仅做了语言长度的映射，而且还改变了序列长度
+        # Project to language model dimensions. Here, from [3, 729, 1152] to [3, 196, 2048],
+        # not only mapping language length but also changing sequence length.
+        images_embeds = self.projector(images_feature)
         _, hw, n_dim = images_embeds.shape  # _, 729, D
-        h = w = int(hw ** 0.5)  
+        h = w = int(hw ** 0.5)
         # put image tokens into the input_embeds, [b, T, D]
-        input_embeds = self.language.get_input_embeddings()(input_ids) # 得到语言的input embeds 之后拿图像的embed把占位符的替换掉 masked_scatter_
+        # Get language input embeds, then replace placeholders with image embeds using masked_scatter_
+        input_embeds = self.language.get_input_embeddings()(input_ids)
 
-        # 根据self.tile_tag & self.global_view_pos填充image token sequence
+        # Fill image token sequence according to self.tile_tag & self.global_view_pos
         tile_index = 0
         for idx in range(images_spatial_crop.shape[0]):
             images_in_this_batch = []
@@ -617,7 +620,6 @@ class DeepseekVLV2ForCausalLM(DeepseekVLV2PreTrainedModel):
                     # [hw, D] -> [h, w, D]
                     global_features = global_features.view(h, w, n_dim)
                     # [D]     -> [h, 1, D]
-                    # self.image_newline是一个可学习的embedding向量，形状是[D]
                     new_lines_in_global = repeat(self.image_newline, "d -> h 1 d", h=h)
                     # cat([h, w, D], [h, 1, D], dim=1) -> [h, w + 1, D]
                     global_features = torch.cat([global_features, new_lines_in_global], dim=1)
@@ -659,7 +661,6 @@ class DeepseekVLV2ForCausalLM(DeepseekVLV2PreTrainedModel):
                             [local_features, self.view_seperator[None, :], global_features], dim=0)
 
                 else:
-                    # abandoned，实际上不会走这个逻辑
                     global_features = torch.cat(
                         [self.tile_indicators[0:1], global_features], dim=0
                     )
@@ -677,16 +678,13 @@ class DeepseekVLV2ForCausalLM(DeepseekVLV2PreTrainedModel):
 
             if len(images_in_this_batch) > 0:
                 images_in_this_batch = torch.cat(images_in_this_batch, dim=0)
-                # 将图像特征插入到文本序列的预定义的位置
                 input_embeds[idx].masked_scatter_(images_seq_mask[idx].unsqueeze(-1), images_in_this_batch)
 
-        # 使用
         start_pos, length = self.find_single_image_token_span(input_ids)
 
         positions_info = self.analyze_special_tokens(
             input_ids, hw , images, images_seq_mask, images_spatial_crop
             )
-        # print("positions_info", positions_info)
         return input_embeds, (start_pos, length, positions_info)
 
     @torch.no_grad()
@@ -728,7 +726,6 @@ class DeepseekVLV2ForCausalLM(DeepseekVLV2PreTrainedModel):
             chunk_end = min(i + chunk_size, prefilling_len)
             chunk_inputs_embeds = inputs_embeds[:, chunk_start: chunk_end]
             chunk_attention_mask = attention_mask[:, 0: chunk_end]
-            # print(f"start = {chunk_start}, end = {chunk_end}, prefilling_len = {prefilling_len}, seq_len = {seq_len}")
 
             # compute position_ids
             if past_key_values is not None:
@@ -738,7 +735,6 @@ class DeepseekVLV2ForCausalLM(DeepseekVLV2PreTrainedModel):
                     dtype=torch.long,
                     device=inputs_embeds.device
                 ).unsqueeze(0)
-                # 把之前计算好存在CPU上的kvcache 移回gpu中
                 past_key_values = self._move_past_key_values_to_gpu(past_key_values, inputs_embeds.device)
             else:
                 position_ids = None
@@ -748,13 +744,12 @@ class DeepseekVLV2ForCausalLM(DeepseekVLV2PreTrainedModel):
                 outputs = self.forward(
                     inputs_embeds=chunk_inputs_embeds,
                     attention_mask=chunk_attention_mask,
-                    past_key_values=past_key_values, # 之前的kvcache
+                    past_key_values=past_key_values, # 
                     position_ids=position_ids,
                     use_cache=True,
                 )
                 # update past_key_values 
-                past_key_values = outputs.past_key_values # 包含chunk1的kv
-                # 处理完成后移到CPU
+                past_key_values = outputs.past_key_values # 
                 past_key_values = self._move_past_key_values_to_cpu(past_key_values)
 
                 del outputs, position_ids
@@ -768,7 +763,6 @@ class DeepseekVLV2ForCausalLM(DeepseekVLV2PreTrainedModel):
                     layer_past[1][:, :, 0: prefilling_len, ...].to(inputs_embeds.device),
                 )
             )
-        # inputs_embeds torch.Size([1, 657, 2048])
         return inputs_embeds, prefilling_key_values
 
     def forward(
@@ -822,7 +816,6 @@ class DeepseekVLV2ForCausalLM(DeepseekVLV2PreTrainedModel):
                 attention_mask = attention_mask.to(inputs_embeds.device)
 
 
-        # DeepSeek-VL2-Small  27层
         outputs = self.language.forward(
             input_ids=None,
             attention_mask=attention_mask,
@@ -916,13 +909,11 @@ class DeepseekVLV2ForCausalLM(DeepseekVLV2PreTrainedModel):
             torch.cuda.synchronize()
 
     def _move_past_key_values_to_cpu(self, past_key_values):
-        # print(f"past_key_values -> cpu")
         if past_key_values is None:
             return None
         return tuple(tuple(t.cpu() for t in layer) for layer in past_key_values)
 
     def _move_past_key_values_to_gpu(self, past_key_values, device="cuda:0"):
-        # print(f"past_key_values -> gpu")
         if past_key_values is None:
             return None
         return tuple(tuple(t.to(device) for t in layer) for layer in past_key_values)

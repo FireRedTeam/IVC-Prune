@@ -144,12 +144,22 @@ To evaluate the model on grounding tasks, run the following script:
 ```bash
 cd IVCP/VLMEvalKit
 bash test_ivcp_qwen_grounding.sh
+
+bash test_ivcp_internvl_grounding.sh
+
+bash test_ivcp_deepseekvl_grounding.sh
 ```
 
 To evaluate general VQA tasks, run:
 
 ```bash
 bash test_ivcp_qwen_generalvqa.sh
+
+bash test_ivcp_internvl_generalvqa.sh
+
+bash test_ivcp_deepseekvl_generalvqa.sh
+
+bash test_ivcp_llava_generalvqa.sh
 ```
 
 **Note:**  

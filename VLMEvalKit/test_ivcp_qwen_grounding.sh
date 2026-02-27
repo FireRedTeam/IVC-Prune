@@ -19,7 +19,6 @@ datasets=(
     "RefCOCOg_val_for_qwen25vl"
 )
 
-# 为每个数据集运行评估
 for MODEL in "${MODELS[@]}"; do
     for dataset in "${datasets[@]}"; do
 
